@@ -76,3 +76,7 @@ node --test cliproom/tests/*.test.js tests/*.test.js
 ~~~
 
 The tests cover the existing timeline and server behavior, suite routes and static asset handling, and upload/metadata handoff.
+
+## Coding agents
+
+The optional [RoomSuite MCP server](mcp/README.md) lets coding agents create images, audio, vector artwork and video through the rooms. It runs separately from the normal application and uses isolated browser sessions.
