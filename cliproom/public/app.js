@@ -674,22 +674,49 @@ async function saveProject(asCopy = false) {
     if (error.status === 409) $('conflictDialog').showModal(); else notify(error.message, 7000);
   } finally { saveInProgress = false; $('saveBtn').disabled = false; }
 }
+async function loadProjectList() {
+  const { projects } = await request('/api/projects'), root = $('projectList'); root.replaceChildren();
+  if (!projects.length) root.innerHTML = '<p class="mini-hint">No saved projects yet. Save your first story to find it here.</p>';
+  for (const project of projects) {
+    const row = document.createElement('div'); row.className = 'project-item';
+    const open = document.createElement('button'); open.className = 'project-open'; open.type = 'button';
+    open.setAttribute('aria-label', 'Open ' + project.name);
+    open.innerHTML = `<span><strong>${escapeHTML(project.name)}</strong><small>Saved ${escapeHTML(new Date(project.updatedAt).toLocaleString())}</small></span><span class="project-open-label" aria-hidden="true">Open ↗</span>`;
+    open.addEventListener('click', async () => {
+      if (dirty && !confirm('You have unsaved changes. Open this project anyway?')) return;
+      try { const loaded = await request(`/api/projects/${project.id}`); setState(loaded.state, loaded.id, loaded.revision); $('projectsDialog').close(); notify('Project opened.'); }
+      catch (error) { $('projectsStatus').textContent = error.message; }
+    });
+    const remove = document.createElement('button'); remove.className = 'project-delete'; remove.type = 'button'; remove.textContent = 'Delete';
+    remove.setAttribute('aria-label', 'Delete ' + project.name);
+    remove.addEventListener('click', async () => {
+      if (!confirm(`Delete “${project.name}”? This permanently removes the saved project; its uploaded media stays on the server.`)) return;
+      remove.disabled = true; open.disabled = true; $('projectsStatus').textContent = 'Deleting project…';
+      try {
+        await request(`/api/projects/${project.id}`, { method:'DELETE', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ baseRevision:project.revision }) });
+        const wasOpen = projectId === project.id && revision > 0;
+        if (wasOpen) { projectId = uid(); revision = 0; dirty = true; render(); }
+        const focus = row.nextElementSibling?.querySelector('.project-open') || row.previousElementSibling?.querySelector('.project-open') || $('newProjectBtn');
+        row.remove();
+        if (!root.children.length) root.innerHTML = '<p class="mini-hint">No saved projects yet. Save your first story to find it here.</p>';
+        $('projectsStatus').textContent = wasOpen ? 'Project deleted. Your open timeline can be saved as a new project.' : 'Project deleted. Its uploaded media remains on the server.';
+        if ($('projectsDialog').open) focus.focus();
+      } catch (error) {
+        if (error.status === 409 || error.status === 404) {
+          try { await loadProjectList(); } catch { /* Keep the existing list and show the error. */ }
+        }
+        $('projectsStatus').textContent = error.message;
+      } finally { remove.disabled = false; open.disabled = false; }
+    });
+    row.append(open, remove); root.append(row);
+  }
+}
 async function showProjects() {
-  if (recording || exportPreparing || mediaBusy) return;
+  if (recording || exportPreparing || mediaBusy || saveInProgress) return;
   try {
-    const { projects } = await request('/api/projects'), root = $('projectList'); root.replaceChildren();
-    if (!projects.length) root.innerHTML = '<p class="mini-hint">No saved projects yet. Save your first story to find it here.</p>';
-    for (const project of projects) {
-      const button = document.createElement('button'); button.className = 'project-item';
-      button.innerHTML = `<span><strong>${escapeHTML(project.name)}</strong><small>Saved ${escapeHTML(new Date(project.updatedAt).toLocaleString())}</small></span><span>↗</span>`;
-      button.addEventListener('click', async () => {
-        if (dirty && !confirm('You have unsaved changes. Open this project anyway?')) return;
-        try { const loaded = await request(`/api/projects/${project.id}`); setState(loaded.state, loaded.id, loaded.revision); $('projectsDialog').close(); notify('Project opened.'); }
-        catch (e) { notify(e.message); }
-      }); root.append(button);
-    }
-    $('projectsDialog').showModal();
-  } catch (error) { notify(error.message); }
+    await loadProjectList(); $('projectsStatus').textContent = '';
+    if (!$('projectsDialog').open) $('projectsDialog').showModal();
+  } catch (error) { notify(error.message, 7000); }
 }
 function formatSupport() {
   if (!window.MediaRecorder || !canvas.captureStream) return null;
@@ -1042,4 +1069,8 @@ async function importRoomHandoff() {
   } catch (error) { notify('Could not open the media: ' + error.message, 8000); }
   finally { mediaBusy = false; $('importBtn').disabled = false; $('emptyImportBtn').disabled = false; }
 }
-importRoomHandoff();
+const launchParams = new URLSearchParams(location.search);
+if (launchParams.get('projects') === '1' && !launchParams.has('asset')) {
+  window.history.replaceState(null, '', location.pathname);
+  showProjects();
+} else importRoomHandoff();

@@ -49,6 +49,8 @@ Each room opens as a separate session. Starting another tab does not replace you
 
 SoundRoom and CaptureRoom have a **Send to Cliproom** button; VectorRoom can send a PNG. Sending is an explicit upload to your Cliproom server. Once the upload completes, select **Open in Cliproom** to add it to a new Cliproom project. Save that project in Cliproom if you want to reopen it later. Media remains on the server after an upload even if it is not added to a saved project; consult the Cliproom guide for storage and backup details.
 
+Choose **Your projects** in the launcher's **Your space** card to open the saved Cliproom projects browser in a separate window. Open a project or delete it after confirmation. Deleting a project removes its saved timeline but keeps uploaded media, which may be shared by other projects. Other rooms' work is stored or exported on the device and is not listed in this server project browser.
+
 ## SoundRoom
 
 Choose an audio file or record your microphone. Drag across the waveform or enter start and end times to select a range; trim to it or cut it out. Click to move the playhead, then add a split marker. **Export current part** exports the selection, or the section containing the playhead between split markers. Volume and fades apply to playback and WAV exports; normalize sets volume based on the audio's peak.

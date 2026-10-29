@@ -207,6 +207,19 @@ async function route(req, res) {
   if (match && UUID.test(match[1])) {
     const id = match[1];
     if (req.method === 'GET') { const p = await readProject(id); if (!p) throw error(404, 'Project not found.'); return json(res, 200, p); }
+    if (req.method === 'DELETE') {
+      checkWrite(req);
+      if (!String(req.headers['content-type'] || '').startsWith('application/json')) throw error(415, 'JSON is required.');
+      const body = await readJson(req);
+      if (!body || !Number.isInteger(body.baseRevision) || body.baseRevision < 1) throw error(400, 'The current project revision is required.');
+      return withLock(id, async () => {
+        const project = await readProject(id);
+        if (!project) throw error(404, 'Project not found.');
+        if (body.baseRevision !== project.revision) throw error(409, 'This project changed on another device. Refresh the list before deleting it.');
+        await fsp.unlink(path.join(PROJECTS, `${id}.json`));
+        return json(res, 200, { id, deleted:true });
+      });
+    }
     if (req.method === 'PUT') {
       checkWrite(req);
       if (!String(req.headers['content-type'] || '').startsWith('application/json')) throw error(415, 'JSON is required.');

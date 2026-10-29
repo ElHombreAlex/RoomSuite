@@ -66,3 +66,27 @@ test('same-origin uploads, media ranges and project conflicts', async () => {
   const missing = await call('/api/projects/' + crypto.randomUUID(), { method: 'PUT', headers: { ...writeHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ baseRevision: 0, state: { name: 'Broken', assets: [{ id: crypto.randomUUID() }] } }) });
   assert.equal(missing.response.status, 400);
 });
+
+test('project deletion checks origin and revision without deleting shared media', async () => {
+  const first = crypto.randomUUID(), second = crypto.randomUUID();
+  const state = { name:'Shared media', assets:[{ id:mediaId }], clips:[], titles:[] };
+  const save = (id, revision) => call('/api/projects/' + id, { method:'PUT', headers:{ ...writeHeaders, 'Content-Type':'application/json' }, body:JSON.stringify({ baseRevision:revision, state }) });
+  const remove = (id, revision, headers = writeHeaders) => call('/api/projects/' + id, { method:'DELETE', headers:{ ...headers, 'Content-Type':'application/json' }, body:JSON.stringify({ baseRevision:revision }) });
+  assert.equal((await save(first,0)).response.status,200); assert.equal((await save(second,0)).response.status,200);
+  assert.equal((await save(first,1)).body.revision,2);
+  assert.equal((await remove(first,2,{ ...writeHeaders, Origin:'https://other.invalid' })).response.status,403);
+  assert.equal((await remove(first,0)).response.status,400);
+  assert.equal((await remove(first,1)).response.status,409);
+  assert.equal((await call('/api/projects/' + first)).body.revision,2);
+  const deleted = await remove(first,2); assert.equal(deleted.response.status,200); assert.equal(deleted.body.deleted,true);
+  assert.equal((await call('/api/projects/' + first)).response.status,404);
+  assert.equal((await remove(first,2)).response.status,404);
+  assert.equal((await save(first,2)).response.status,409);
+  assert.equal((await call('/api/projects/' + second)).response.status,200);
+  assert.equal((await fetch(base + '/api/assets/' + mediaId)).status,200);
+  const concurrentId = crypto.randomUUID(); assert.equal((await save(concurrentId,0)).response.status,200);
+  const [update, deletion] = await Promise.all([save(concurrentId,1), remove(concurrentId,1)]);
+  assert.deepEqual([update.response.status,deletion.response.status].sort(),[200,409]);
+  const outcome = await call('/api/projects/' + concurrentId);
+  if (update.response.status === 200) assert.equal(outcome.body.revision,2); else assert.equal(outcome.response.status,404);
+});
