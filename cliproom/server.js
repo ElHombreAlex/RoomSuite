@@ -120,6 +120,40 @@ async function route(req, res) {
     }
   }
   if (req.method === 'GET' && pathname === '/api/health') return json(res, 200, { ok: true });
+  if (req.method === 'POST' && pathname === '/api/render') {
+    checkWrite(req);
+    if (!String(req.headers['content-type'] || '').startsWith('application/json')) throw error(415, 'JSON is required.');
+    const body = await readJson(req);
+    if (!body || typeof body !== 'object' || Array.isArray(body) || (!!body.project === !!body.project_id)) throw error(400, 'Provide either project or project_id.');
+    let input = body.project;
+    if (body.project_id) {
+      if (typeof body.project_id !== 'string' || !UUID.test(body.project_id)) throw error(400, 'Invalid project ID.');
+      const saved = await readProject(body.project_id); if (!saved) throw error(404, 'Project not found.');
+      input = saved.state;
+    } else if (input && input.state) input = input.state;
+    const { validateProject, renderProject } = require('./render');
+    const project = await validateProject(input, ASSETS);
+    if (res.destroyed) return;
+    const controller = new AbortController();
+    const disconnected = () => { if (!res.writableEnded) controller.abort(); };
+    res.once('close', disconnected);
+    let output;
+    try {
+      output = await renderProject(project, { port:PORT, suiteMode:SUITE_MODE, signal:controller.signal });
+      if (controller.signal.aborted) return;
+      res.setHeader('Content-Type', output.mime); res.setHeader('Content-Length', output.bytes);
+      res.setHeader('Content-Disposition', 'attachment; filename="cliproom.' + output.extension + '"');
+      res.writeHead(200); await pipeline(fs.createReadStream(output.file), res);
+    } catch (cause) {
+      if (controller.signal.aborted) return;
+      if (!cause.status) cause.status = 422;
+      throw cause;
+    } finally {
+      res.removeListener('close', disconnected);
+      if (output) await output.cleanup();
+    }
+    return;
+  }
   if ((req.method === 'GET' || req.method === 'HEAD') && publicFiles[pathname]) {
     const [file, type] = publicFiles[pathname]; return sendFile(req, res, path.join(PUBLIC, file), type);
   }

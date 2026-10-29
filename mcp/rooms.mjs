@@ -1,7 +1,8 @@
 import path from 'node:path';
+import fs from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
-import { inputPath, outputPath, saveDownload } from './files.mjs';
+import { inputPath, outputPath, saveDownload, saveResponse } from './files.mjs';
 
 const configuredUrl = process.env.ROOMSUITE_MCP_URL || 'http://127.0.0.1:8090';
 const requestedTimeout = Number(process.env.ROOMSUITE_MCP_TIMEOUT_MS || 600000);
@@ -64,6 +65,45 @@ async function setField(page, selector, value) {
 async function waitForToast(page, text, milliseconds = 30000) {
   try { await page.waitForFunction(expected => document.querySelector('#toast')?.textContent.includes(expected), text, { timeout:milliseconds }); }
   catch { const message = await page.locator('#toast').textContent().catch(() => ''); throw new Error(message || 'The editor did not finish the operation.'); }
+}
+
+export async function inspectMedia(args, signal) {
+  const file = await inputPath(args.input);
+  return withRoom('/cliproom/', 'Cliproom', signal, async page => {
+    await page.evaluate(() => { const input = document.createElement('input'); input.type = 'file'; input.id = 'roomsuiteProbe'; document.body.append(input); });
+    await page.locator('#roomsuiteProbe').setInputFiles(file);
+    return page.evaluate(async () => {
+      const file = document.querySelector('#roomsuiteProbe').files[0], type = file.type;
+      const kind = type.startsWith('image/') ? 'image' : type.startsWith('video/') ? 'video' : type.startsWith('audio/') ? 'audio' : null;
+      if (!kind) throw new Error('The browser cannot identify this as an image, video, or audio file.');
+      const url = URL.createObjectURL(file);
+      try {
+        const media = kind === 'image' ? new Image() : document.createElement(kind);
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('Timed out reading media metadata.')), 20000);
+          media.onerror = () => { clearTimeout(timer); reject(new Error('The browser could not read this media.')); };
+          const loaded = () => { clearTimeout(timer); resolve(); };
+          if (kind === 'image') media.onload = loaded; else { media.preload = 'metadata'; media.onloadedmetadata = loaded; }
+          media.src = url;
+        });
+        return { name:file.name, bytes:file.size, mime_type:type, kind,
+          width:kind === 'image' ? media.naturalWidth : kind === 'video' ? media.videoWidth : null,
+          height:kind === 'image' ? media.naturalHeight : kind === 'video' ? media.videoHeight : null,
+          duration_seconds:kind !== 'image' && Number.isFinite(media.duration) ? media.duration : null };
+      } finally { URL.revokeObjectURL(url); }
+    });
+  });
+}
+
+export async function importCliproomMedia(args, signal) {
+  const file = await inputPath(args.input);
+  return withRoom('/cliproom/', 'Cliproom', signal, async page => {
+    await page.locator('#fileInput').setInputFiles(file);
+    try { await page.waitForFunction(() => Number(document.querySelector('#assetCount').textContent) === 1 && !document.querySelector('#importBtn').disabled, null, { timeout:Math.min(timeoutMs, 60000) }); }
+    catch { throw new Error('Could not import media: ' + (await page.locator('#toast').textContent())); }
+    const asset = await page.evaluate(() => state.assets[0]);
+    return { asset, note:'The media is stored in the Cliproom server library. No project was saved.' };
+  });
 }
 async function downloadTo(page, button, output, mime) {
   const [download] = await Promise.all([page.waitForEvent('download', { timeout:timeoutMs }), page.locator(button).click()]);
@@ -222,7 +262,16 @@ export async function renderVideo(args, signal, progress) {
           cursors.set(key, Math.max(cursors.get(key) || 0, item.start + (item.out - item.in) / item.rate));
           if (entry.volume !== undefined) item.volume = entry.volume;
           if (!isAudio && entry.fit) item.fit = entry.fit;
-          if (!isAudio && entry.opacity !== undefined) item.opacity = entry.opacity;
+          if (!isAudio) for (const key of ['scale','x','y','opacity','rotation','brightness','contrast','saturation']) if (entry[key] !== undefined) item[key] = entry[key];
+          if (entry.keyframes) {
+            const times = new Set();
+            item.keyframes = entry.keyframes.map(frame => {
+              if (times.has(frame.time)) throw new Error('Keyframe times must be unique for ' + asset.name + '.');
+              times.add(frame.time);
+              if (!Object.keys(frame).some(key => key !== 'time')) throw new Error('A keyframe must set at least one property.');
+              return { id:uid(), ...frame };
+            }).sort((a,b) => a.time - b.time);
+          }
           item.fadeIn = entry.fade_in || 0; item.fadeOut = entry.fade_out || 0;
         });
         for (const title of config.titles || []) {
@@ -256,4 +305,39 @@ export async function renderVideo(args, signal, progress) {
     finally { if (timer) clearInterval(timer); }
     return { ...result, room:'Cliproom', operation:'render_video', duration_seconds:configured.duration, project, note:'Imported media remains in the Cliproom server library.' };
   });
+}
+
+export async function renderSavedProject(args, signal) {
+  if (!!args.project_id === !!args.project_path) throw new Error('Provide either project_id or project_path.');
+  let body;
+  if (args.project_id) body = { project_id:args.project_id };
+  else {
+    const file = await inputPath(args.project_path), stat = await fs.stat(file);
+    if (stat.size > 2 * 1024 * 1024) throw new Error('Project JSON is too large.');
+    try { body = { project:JSON.parse(await fs.readFile(file, 'utf8')) }; }
+    catch { throw new Error('Project file is not valid JSON.'); }
+  }
+  const controller = new AbortController(), cancel = () => controller.abort();
+  if (signal?.aborted) throw new Error('The request was cancelled.');
+  signal?.addEventListener('abort', cancel, { once:true });
+  const timer = setTimeout(cancel, timeoutMs);
+  try {
+    const origin = serverUrl();
+    const response = await fetch(origin + '/api/render', {
+      method:'POST', headers:{ 'Content-Type':'application/json', 'Origin':origin, 'X-Cliproom-Request':'1' },
+      body:JSON.stringify(body), signal:controller.signal
+    });
+    if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'Render failed (' + response.status + ').'); }
+    const type = (response.headers.get('content-type') || '').split(';')[0];
+    const ext = type === 'video/mp4' ? '.mp4' : type === 'video/webm' ? '.webm' : null;
+    if (!ext) { await response.body?.cancel(); throw new Error('The renderer returned an unsupported video format.'); }
+    let output;
+    try { output = await outputPath(outputWithExtension(args.output, ext), [ext]); }
+    catch (error) { await response.body?.cancel(); throw error; }
+    const saved = await saveResponse(response, output, type, controller.signal);
+    return { ...saved, room:'Cliproom', operation:'render_project', project_id:args.project_id || null };
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(signal?.aborted ? 'The request was cancelled.' : 'The render timed out.');
+    throw error;
+  } finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); }
 }

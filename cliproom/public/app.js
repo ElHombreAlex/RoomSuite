@@ -25,10 +25,10 @@ const TITLE_FONTS = [
 const emptyState = () => T.empty(uid);
 let state = emptyState(), projectId = uid(), revision = 0, dirty = false, selected = null;
 let videoTarget = state.videoTracks[0].id, audioTarget = state.audioTracks[0].id;
-let timelineZoom = 1, stageDrag = null;
+let timelineZoom = 1, stageDrag = null, keyframeClipId = null, keyframeIndex = 0;
 const audioGesture = T.createAudioClickGesture({ onCut:cutAudio, onOptions:(clipId, time) => selectAudio(clipId, time, true) });
 let undoStack = [], redoStack = [], currentTime = 0, playing = false, playClock = 0, frameId = 0, lastDrawTime = 0, playbackGeneration = 0;
-let audioContext = null, outputAudio = null, activeMedia = new Set(), recorder = null, recording = false, exportPreparing = false, cancelRecording = false, exportGeneration = 0;
+let audioContext = null, outputAudio = null, silentAudio = null, activeMedia = new Set(), recorder = null, recording = false, exportPreparing = false, cancelRecording = false, exportGeneration = 0;
 let saveInProgress = false, mediaBusy = false, statusTimer = 0;
 const elements = new Map(), images = new Map();
 const canvas = $('canvas'), context = canvas.getContext('2d');
@@ -116,6 +116,30 @@ function option(value, label, current) { return `<option value="${escapeHTML(val
 function slider(label, id, value, min, max, disabled = false) {
   return `<label class="field"><span>${label} · ${value}%</span><input id="${id}" type="range" min="${min}" max="${max}" step="${id === 'titleSize' ? '.1' : '1'}" value="${value}" ${disabled ? 'disabled' : ''}></label>`;
 }
+function keyframePanel(item, isVideo) {
+  const frames = Array.isArray(item.keyframes) ? item.keyframes : [];
+  if (keyframeClipId !== item.id) { keyframeClipId = item.id; keyframeIndex = 0; }
+  keyframeIndex = clamp(keyframeIndex, 0, Math.max(0, frames.length - 1));
+  const frame = frames[keyframeIndex];
+  const defaults = { scale:1, x:50, y:50, opacity:1, rotation:0, brightness:100, contrast:100, saturation:100, volume:1 };
+  const atFrame = frame ? T.animatedValues({ ...item, start:0, in:0, out:Math.max(number(item.out), number(frame.time), .001), rate:1 }, number(frame.time)) : defaults;
+  const value = key => number(frame?.[key], number(atFrame[key], number(item[key], defaults[key])));
+  const choices = frames.map((entry, index) => option(String(index), 'Source ' + number(entry.time).toFixed(2) + 's', String(keyframeIndex))).join('');
+  let html = '<div class="section-label inspector-section"><span>KEYFRAMES</span></div>' +
+    '<p class="mini-hint">Move the playhead inside this clip, then add a keyframe. Values interpolate between points and follow the source when trimmed or retimed.</p>' +
+    '<button class="tiny-button wide-tiny" id="addKeyframeBtn">＋ Add or select at playhead</button>';
+  if (!frame) return html + '<p class="mini-hint">No keyframes yet.</p>';
+  html += '<label class="field"><span>Keyframe</span><select id="keyframeSelect">' + choices + '</select></label>' +
+    '<div class="field-row">' + field('Source time (sec)','keyframeTime',number(frame.time).toFixed(2),'type="number" min="0" step="0.01"') + field('Volume %','keyframeVolume',Math.round(value('volume') * 100),'type="number" min="0" max="100" step="1"') + '</div>';
+  if (isVideo) html +=
+    '<div class="field-row">' + field('Scale %','keyframeScale',Math.round(value('scale') * 100),'type="number" min="10" max="200" step="1"') + field('Opacity %','keyframeOpacity',Math.round(value('opacity') * 100),'type="number" min="0" max="100" step="1"') + '</div>' +
+    '<div class="field-row">' + field('Horizontal %','keyframeX',Math.round(value('x')),'type="number" min="-100" max="200" step="1"') + field('Vertical %','keyframeY',Math.round(value('y')),'type="number" min="-100" max="200" step="1"') + '</div>' +
+    field('Rotation (°)','keyframeRotation',value('rotation').toFixed(1),'type="number" step="1"') +
+    '<div class="field-row">' + field('Brightness %','keyframeBrightness',Math.round(value('brightness')),'type="number" min="0" max="200" step="1"') + field('Contrast %','keyframeContrast',Math.round(value('contrast')),'type="number" min="0" max="200" step="1"') + '</div>' +
+    field('Saturation %','keyframeSaturation',Math.round(value('saturation')),'type="number" min="0" max="200" step="1"');
+  return html + '<div class="keyframe-actions"><button class="tiny-button" id="gotoKeyframeBtn">Go to keyframe</button><button class="tiny-button danger" id="deleteKeyframeBtn">Delete keyframe</button></div>' +
+    '<p class="mini-hint">These values apply to this keyframe. The clip controls above set the base values.</p>';
+}
 function renderInspector() {
   const root = $('inspectorBody'), item = selectedItem();
   if (!item) {
@@ -167,6 +191,7 @@ function renderInspector() {
       ${slider('Size','titleSize',item.size,2,30)}${slider('Text width','titleWidth',item.width,10,100)}
       <label class="field"><span>Color</span><input id="titleColor" type="color" value="${escapeHTML(item.color)}"></label>`;
   }
+  if (item && ['clip','audio'].includes(selected?.type)) root.insertAdjacentHTML('beforeend', keyframePanel(item, selected.type === 'clip'));
 }
 function draggedClip(original, source, mode, delta) {
   const next = { ...original }, playbackRate = T.rate(original), minDuration = Math.min(.05, T.length(original));
@@ -251,6 +276,12 @@ function renderTimeline() {
       el.style.left = `${100 * clip.start / span}%`; el.style.width = `${100 * T.length(clip) / span}%`; el.style.zIndex = String(index + 1);
       el.innerHTML = `<span class="clip-edge clip-edge-left" data-mode="trim-start" title="Drag to trim the start"></span><strong>${type === 'audio' ? '♪ ' : ''}${escapeHTML(source?.name || 'Missing media')}</strong><small>${seconds(T.length(clip))}${T.rate(clip) !== 1 ? ` · ${T.rate(clip).toFixed(2)}×` : ''}${clip.fadeIn || clip.fadeOut ? ' · fade' : ''}</small><span class="clip-edge clip-edge-right ${type === 'audio' ? 'stretch-edge' : ''}" data-mode="${type === 'audio' ? 'stretch' : 'trim-end'}" title="${type === 'audio' ? 'Drag to stretch audio' : 'Drag to trim the end'}"></span>`;
       el.setAttribute('aria-label', `${source?.name || 'Missing media'} on ${track.name}, ${seconds(T.length(clip))}`);
+      for (const frame of Array.isArray(clip.keyframes) ? clip.keyframes : []) {
+        if (!Number.isFinite(frame.time) || frame.time < clip.in || frame.time > clip.out) continue;
+        const marker = document.createElement('span'); marker.className = 'keyframe-marker';
+        marker.style.left = (100 * (frame.time - clip.in) / (clip.out - clip.in)) + '%';
+        el.append(marker);
+      }
       if (type === 'audio') { el.dataset.audioId = clip.id; el.title = 'Click or tap to cut; double-click or double-tap to change speed'; }
       let drag = null, suppressClick = false, lastMode = 'move';
       el.addEventListener('pointerdown', event => {
@@ -473,13 +504,14 @@ function updateStageSelection() {
   const isTitle = selected?.type === 'title', isVideo = selected?.type === 'clip';
   const active = item && (isTitle ? at >= item.start && at < item.end : isVideo && T.active(item, at) && !state.videoTracks.find(track => track.id === item.trackId)?.hidden);
   if (!active || playing || recording || exportPreparing) { overlay.classList.add('hidden'); return; }
-  const canvasRect = canvas.getBoundingClientRect(), frameRect = $('canvasFrame').getBoundingClientRect(), layout = isTitle ? titleLayout(item) : videoLayout(item);
+  const visual = isVideo ? { ...item, ...T.animatedValues(item, at) } : item;
+  const canvasRect = canvas.getBoundingClientRect(), frameRect = $('canvasFrame').getBoundingClientRect(), layout = isTitle ? titleLayout(item) : videoLayout(visual);
   if (!canvasRect.width || !canvasRect.height) { overlay.classList.add('hidden'); return; }
   overlay.style.left = `${canvasRect.left - frameRect.left + layout.x / canvas.width * canvasRect.width}px`;
   overlay.style.top = `${canvasRect.top - frameRect.top + layout.y / canvas.height * canvasRect.height}px`;
   overlay.style.width = `${layout.width / canvas.width * canvasRect.width}px`;
   overlay.style.height = `${layout.height / canvas.height * canvasRect.height}px`;
-  overlay.style.transform = `rotate(${T.normalizeRotation(item.rotation)}deg)`;
+  overlay.style.transform = `rotate(${T.normalizeRotation(visual.rotation)}deg)`;
   overlay.setAttribute('aria-label', `Selected ${isTitle ? 'text' : 'picture'}: drag to move`);
   overlay.classList.remove('hidden');
 }
@@ -490,9 +522,9 @@ function renderFrame() {
     if (track.hidden) continue;
     const visible = state.clips.filter(c => c.trackId === track.id && T.active(c, at)).sort(T.order);
     for (const clip of visible) {
-      const source = asset(clip.assetId), opacity = T.visualOpacity(state, clip, at);
-      if (source?.kind === 'image') { const img = imageFor(source); if (img.complete && img.naturalWidth) drawCover(img, clip, opacity); }
-      if (source?.kind === 'video') { const el = mediaFor(source, clip).el; if (el.readyState >= 2) drawCover(el, clip, opacity); }
+      const source = asset(clip.assetId), opacity = T.visualOpacity(state, clip, at), visual = { ...clip, ...T.animatedValues(clip, at) };
+      if (source?.kind === 'image') { const img = imageFor(source); if (img.complete && img.naturalWidth) drawCover(img, visual, opacity); }
+      if (source?.kind === 'video') { const el = mediaFor(source, clip).el; if (el.readyState >= 2) drawCover(el, visual, opacity); }
     }
   }
   for (const title of state.titles) if (at >= title.start && at < title.end) drawTitle(title);
@@ -510,7 +542,7 @@ function syncMedia(force = false) {
     if (!source || source.kind === 'image' || !T.active(clip, currentTime)) continue;
     nowActive.add(clip.id);
     const entry = mediaFor(source, clip), track = [...state.videoTracks, ...state.audioTracks].find(t => t.id === clip.trackId);
-    const volume = track?.muted ? 0 : clamp(number(clip.volume, 1) * T.envelope(clip, currentTime), 0, 1);
+    const volume = track?.muted ? 0 : clamp(T.animatedValues(clip, currentTime).volume * T.envelope(clip, currentTime), 0, 1);
     if (Math.abs(entry.el.playbackRate - T.rate(clip)) > .00001) entry.el.playbackRate = T.rate(clip);
     if ('preservesPitch' in entry.el && !entry.el.preservesPitch) entry.el.preservesPitch = true;
     if (entry.gain) entry.gain.gain.value = volume; else entry.el.volume = volume;
@@ -532,6 +564,9 @@ async function ensureAudio() {
     const Constructor = window.AudioContext || window.webkitAudioContext;
     if (!Constructor) throw new Error('This browser cannot mix audio for playback or export.');
     audioContext = new Constructor(); outputAudio = audioContext.createMediaStreamDestination();
+    // Keep the destination clock running for picture-only timelines.
+    silentAudio = audioContext.createConstantSource(); const silence = audioContext.createGain(); silence.gain.value = 0;
+    silentAudio.connect(silence); silence.connect(outputAudio); silentAudio.start();
   }
   if (audioContext.state !== 'running') await audioContext.resume();
 }
@@ -748,6 +783,7 @@ $('removeBtn').addEventListener('click', () => change(() => { if (!selected) ret
 $('duplicateBtn').addEventListener('click', () => change(() => {
   const item = selectedItem(); if (!item) return;
   const copy = { ...item, id: uid() };
+  if (Array.isArray(item.keyframes)) copy.keyframes = item.keyframes.map(frame => ({ ...frame }));
   if (selected.type === 'clip' || selected.type === 'audio') { copy.start = T.end(item); delete copy.transitionFrom; (selected.type === 'clip' ? state.clips : state.audioClips).push(copy); currentTime = copy.start; }
   else state.titles.push(copy);
   selected = { type: selected.type, id: copy.id };
@@ -763,6 +799,28 @@ $('splitBtn').addEventListener('click', () => {
 });
 $('inspectorBody').addEventListener('click', e => {
   const item = selectedItem(); if (!item || !['clip', 'audio'].includes(selected?.type)) return;
+  if (e.target.id === 'addKeyframeBtn') {
+    if (currentTime < item.start || currentTime > T.end(item)) return notify('Move the playhead inside the selected clip first.');
+    const time = Math.round(T.sourceAt(item, currentTime) * 1000) / 1000;
+    const existing = (item.keyframes || []).findIndex(frame => Math.abs(frame.time - time) < .0005);
+    if (existing >= 0) { keyframeClipId = item.id; keyframeIndex = existing; renderInspector(); return; }
+    const values = T.animatedValues(item, currentTime);
+    change(() => {
+      item.keyframes ||= [];
+      item.keyframes.push(selected.type === 'audio' ? { id:uid(), time, volume:values.volume } : { id:uid(), time, ...values });
+      item.keyframes.sort((a,b) => a.time - b.time);
+      keyframeClipId = item.id; keyframeIndex = item.keyframes.findIndex(frame => frame.time === time);
+    });
+    notify('Keyframe added. Adjust its values in the inspector.'); return;
+  }
+  if (e.target.id === 'deleteKeyframeBtn') {
+    change(() => { if (item.keyframes) item.keyframes.splice(keyframeIndex, 1); keyframeIndex = Math.max(0, keyframeIndex - 1); }); return;
+  }
+  if (e.target.id === 'gotoKeyframeBtn') {
+    const frame = item.keyframes?.[keyframeIndex]; if (!frame) return;
+    if (frame.time < item.in || frame.time > item.out) return notify('This keyframe is outside the current trim.');
+    stopPlayback(); seek(item.start + (frame.time - item.in) / T.rate(item)); return;
+  }
   if (e.target.id === 'placeAtPlayheadBtn') change(() => { item.start = currentTime; });
   if (e.target.id === 'resetColorBtn') change(() => { item.brightness = 100; item.contrast = 100; item.saturation = 100; });
   if (e.target.id === 'fitAudioBtn' && selected.type === 'audio') {
@@ -781,6 +839,25 @@ $('inspectorBody').addEventListener('click', e => {
 });
 $('inspectorBody').addEventListener('change', e => {
   const id = e.target.id, value = e.target.value; let invalidDuration = false;
+  if (id === 'keyframeSelect') { keyframeIndex = Number(value) || 0; renderInspector(); return; }
+  if (id.startsWith('keyframe')) {
+    const item = selectedItem(), frame = item?.keyframes?.[keyframeIndex];
+    if (!item || !frame) return;
+    let duplicateTime = false;
+    change(() => {
+      if (id === 'keyframeTime') {
+        const source = asset(item.assetId), max = source?.kind === 'image' ? 3600 : number(source?.duration, 0);
+        const time = clamp(number(value, frame.time), 0, max);
+        if (item.keyframes.some(other => other !== frame && Math.abs(other.time - time) < .0005)) { duplicateTime = true; return; }
+        frame.time = time; item.keyframes.sort((a,b) => a.time - b.time); keyframeIndex = item.keyframes.indexOf(frame);
+      }
+      const properties = { keyframeScale:['scale',.1,2,100], keyframeX:['x',-100,200,1], keyframeY:['y',-100,200,1], keyframeOpacity:['opacity',0,1,100],
+        keyframeRotation:['rotation',-36000,36000,1], keyframeBrightness:['brightness',0,200,1], keyframeContrast:['contrast',0,200,1], keyframeSaturation:['saturation',0,200,1], keyframeVolume:['volume',0,1,100] };
+      const spec = properties[id]; if (spec) frame[spec[0]] = clamp(number(value) / spec[3], spec[1], spec[2]);
+    });
+    if (duplicateTime) { renderInspector(); notify('Choose a time that does not already have a keyframe.'); }
+    return;
+  }
   change(() => {
     const item = selectedItem(), total = totalDuration();
     if (id === 'projectAspect') state.aspect = value; if (id === 'projectQuality') state.quality = value;
@@ -843,7 +920,7 @@ function stageItemAt(x, y, at) {
   for (const track of [...state.videoTracks].reverse()) {
     if (track.hidden) continue;
     const visible = state.clips.filter(item => item.trackId === track.id && T.active(item, at)).sort(T.order).reverse();
-    for (const item of visible) if (T.insideRotatedBox(x, y, videoLayout(item), item.rotation)) return { type:'clip', item };
+    for (const item of visible) { const visual = { ...item, ...T.animatedValues(item, at) }; if (T.insideRotatedBox(x, y, videoLayout(visual), visual.rotation)) return { type:'clip', item }; }
   }
   return null;
 }
@@ -859,6 +936,7 @@ $('canvasFrame').addEventListener('pointerdown', event => {
   const hit = resize || rotate ? existing : (inside ? stageItemAt(px, py, at) : null) || existing;
   if (!hit?.item) return;
   const item = hit.item; selected = { type:hit.type, id:item.id }; stopPlayback(); render();
+  if (hit.type === 'clip' && item.keyframes?.length) { notify('Use the keyframe controls in the inspector to change animated placement.'); return; }
   const centerX = rect.left + rect.width * number(item.x, 50) / 100, centerY = rect.top + rect.height * number(item.y, 50) / 100;
   stageDrag = { id:item.id, type:hit.type, pointerId:event.pointerId, before:JSON.stringify(state), mode:rotate ? 'rotate' : resize ? 'resize' : 'move', x:event.clientX, y:event.clientY,
     centerX, centerY, angle:Math.atan2(event.clientY - centerY, event.clientX - centerX),
@@ -913,7 +991,9 @@ document.addEventListener('keydown', e => {
   else if (e.code === 'Space') { e.preventDefault(); $('playBtn').click(); }
   else if (e.key === 'Delete' && selected) $('removeBtn').click();
   else if (['title','clip'].includes(selected?.type) && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) {
-    e.preventDefault(); const item = selectedItem(), step = e.shiftKey ? 5 : 1, low = selected.type === 'clip' ? -100 : 0, high = selected.type === 'clip' ? 200 : 100;
+    e.preventDefault(); const item = selectedItem();
+    if (selected.type === 'clip' && item?.keyframes?.length) return notify('Use the keyframe controls in the inspector to change animated placement.');
+    const step = e.shiftKey ? 5 : 1, low = selected.type === 'clip' ? -100 : 0, high = selected.type === 'clip' ? 200 : 100;
     change(() => { if (e.key === 'ArrowLeft') item.x = clamp(item.x - step, low, high); if (e.key === 'ArrowRight') item.x = clamp(item.x + step, low, high); if (e.key === 'ArrowUp') item.y = clamp(item.y - step, low, high); if (e.key === 'ArrowDown') item.y = clamp(item.y + step, low, high); if (selected.type === 'title') item.position = 'custom'; });
   }
   else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); stopPlayback(); seek(currentTime + (e.key === 'ArrowRight' ? 1/30 : -1/30)); }

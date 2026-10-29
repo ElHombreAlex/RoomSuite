@@ -7,12 +7,13 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { chromium } from 'playwright';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const mcp = fileURLToPath(new URL('../server.mjs', import.meta.url));
 const port = 24000 + Math.floor(Math.random() * 20000);
 const base = 'http://127.0.0.1:' + port;
-let temp, work, server, client;
+let temp, work, server, client, savedProjectId;
 function tone() {
   const rate = 48000, frames = rate * 2, b = Buffer.alloc(44 + frames * 2);
   b.write('RIFF',0); b.writeUInt32LE(b.length - 8,4); b.write('WAVEfmt ',8); b.writeUInt32LE(16,16);
@@ -46,7 +47,7 @@ after(async () => {
 });
 test('MCP discovers tools and advertises the workspace', async () => {
   const tools = (await client.listTools()).tools.map(tool => tool.name);
-  for (const name of ['roomsuite_info','pixelroom_edit','soundroom_edit','vectorroom_create','captureroom_record_scene','cliproom_render']) assert.ok(tools.includes(name),name);
+  for (const name of ['roomsuite_info','roomsuite_list_files','roomsuite_media_info','pixelroom_edit','soundroom_edit','vectorroom_create','captureroom_record_scene','cliproom_import_media','cliproom_list_projects','cliproom_get_project','cliproom_save_project','cliproom_render','cliproom_render_project']) assert.ok(tools.includes(name),name);
   const info = await call('roomsuite_info'); assert.equal(info.workspace, await fs.realpath(work)); assert.equal(info.server_url,base);
 });
 test('VectorRoom creates a usable PNG from structured shapes and text', async () => {
@@ -61,6 +62,23 @@ test('PixelRoom edits and crops an image through the editor', async () => {
   const result = await call('pixelroom_edit', { input:'art.png', output:'cropped.png', brightness:15, crop:{x:100,y:100,width:400,height:300} });
   const png = await fs.readFile(result.path); const width=png.readUInt32BE(16), height=png.readUInt32BE(20);
   assert.ok(Math.abs(width-400) <= 2 && Math.abs(height-300) <= 2, 'crop dimensions: ' + width + 'x' + height);
+});
+test('workspace listing and media inspection report useful metadata', async () => {
+  const first = await call('roomsuite_list_files',{ limit:1 });
+  assert.equal(first.entries.length,1); assert.equal(first.next_offset,1); assert.ok(first.total >= 3);
+  const second = await call('roomsuite_list_files',{ offset:first.next_offset,limit:1 });
+  assert.notEqual(second.entries[0].name,first.entries[0].name);
+  const image = await call('roomsuite_media_info',{ input:'cropped.png' });
+  assert.equal(image.kind,'image'); assert.ok(Math.abs(image.width-400) <= 2); assert.ok(Math.abs(image.height-300) <= 2);
+  const audio = await call('roomsuite_media_info',{ input:'tone.wav' });
+  assert.equal(audio.kind,'audio'); assert.ok(Math.abs(audio.duration_seconds-2) < .01);
+  await assert.rejects(call('roomsuite_list_files',{ directory:'..' }),/inside the configured MCP workspace/);
+});
+test('Cliproom imports reusable media into the library', async () => {
+  const result = await call('cliproom_import_media',{ input:'cropped.png' });
+  assert.equal(result.asset.kind,'image'); assert.ok(result.asset.id);
+  const response = await fetch(base + '/api/assets/' + result.asset.id + '/metadata');
+  assert.equal(response.status,200); assert.equal((await response.json()).name,'cropped.png');
 });
 test('PixelRoom runs the local subject model', { skip:process.env.ROOMSUITE_MCP_TEST_MODELS !== '1', timeout:180000 }, async () => {
   const result = await call('pixelroom_edit', { input:'sample.jpg', output:'cutout.png', remove_background:true });
@@ -81,12 +99,85 @@ test('CaptureRoom records a prepared visual scene', async () => {
 });
 test('Cliproom renders a timeline and saves an editable project', async () => {
   const result = await call('cliproom_render', {
-    output:'video', name:'MCP test', media:[{input:'cropped.png',duration:1.5},{input:'edited.wav',start:0}],
+    output:'video', name:'MCP test', media:[{input:'cropped.png',duration:1.5,scale:.5,x:25,y:45,brightness:80,keyframes:[{time:0,scale:.5,x:25,y:45,opacity:.5},{time:1.4,scale:1,x:75,y:55,opacity:1}]},{input:'edited.wav',start:0}],
     titles:[{text:'Made with RoomSuite',start:0,end:1}], save_project:true
   });
-  assert.ok(result.bytes > 1000); assert.ok(result.project.id); assert.equal(result.project.revision,1);
+  assert.ok(result.bytes > 1000); assert.ok(result.project.id); assert.equal(result.project.revision,1); savedProjectId = result.project.id;
   const project = await (await fetch(base + '/api/projects/' + result.project.id)).json();
   assert.equal(project.state.name,'MCP test'); assert.equal(project.state.titles[0].text,'Made with RoomSuite'); assert.equal(project.state.assets.length,2);
+  assert.equal(project.state.version,4); assert.equal(project.state.clips[0].x,25); assert.equal(project.state.clips[0].scale,.5); assert.equal(project.state.clips[0].keyframes[1].x,75);
+});
+test('project render endpoint accepts a saved project and returns video without UI driving', async () => {
+  const rendered = await call('cliproom_render_project',{ project_id:savedProjectId, output:'rerendered' });
+  assert.ok(rendered.bytes > 1000); assert.match(rendered.mime_type,/^video\/(mp4|webm)$/);
+  const saved = await (await fetch(base + '/api/projects/' + savedProjectId)).json();
+  await fs.writeFile(path.join(work,'render-project.json'),JSON.stringify(saved));
+  const fromFile = await call('cliproom_render_project',{ project_path:'render-project.json', output:'from-project-file' });
+  assert.ok(fromFile.bytes > 1000);
+  const silent = { ...saved.state, audioClips:[], assets:saved.state.assets.filter(asset => asset.kind !== 'audio') };
+  const response = await fetch(base + '/api/render', { method:'POST', headers:{ Origin:base,'X-Cliproom-Request':'1','Content-Type':'application/json' }, body:JSON.stringify({ project:silent }) });
+  assert.equal(response.status,200); assert.match(response.headers.get('content-type'),/^video\/(mp4|webm)$/); assert.ok((await response.arrayBuffer()).byteLength > 1000);
+  const browser = await chromium.launch({ headless:true, ...(process.env.ROOMSUITE_BROWSER_PATH ? {executablePath:process.env.ROOMSUITE_BROWSER_PATH} : {}) });
+  try {
+    const page = await browser.newPage(); await page.goto(base + '/cliproom/');
+    await page.evaluate(() => { const input = document.createElement('input'); input.type='file'; input.id='testVideo'; document.body.append(input); });
+    await page.locator('#testVideo').setInputFiles(rendered.path);
+    const pixels = await page.evaluate(async () => {
+      const video = document.createElement('video'); video.muted = true;
+      const url = URL.createObjectURL(document.querySelector('#testVideo').files[0]);
+      video.src = url;
+      await new Promise((resolve,reject) => { video.onloadedmetadata=resolve; video.onerror=reject; });
+      const canvas = document.createElement('canvas'); canvas.width=video.videoWidth; canvas.height=video.videoHeight;
+      const ctx=canvas.getContext('2d');
+      async function sample(time) {
+        await new Promise((resolve,reject) => { video.onseeked=resolve; video.onerror=reject; video.currentTime=time; });
+        ctx.drawImage(video,0,0);
+        return [ctx.getImageData(Math.round(canvas.width*.25),Math.round(canvas.height*.69),1,1).data[0], ctx.getImageData(Math.round(canvas.width*.75),Math.round(canvas.height*.69),1,1).data[0]];
+      }
+      const first = await sample(.2), last = await sample(1.25); URL.revokeObjectURL(url);
+      return {first,last};
+    });
+    assert.ok(pixels.first[0] > pixels.first[1] + 15, 'picture starts on the left: ' + JSON.stringify(pixels));
+    assert.ok(pixels.last[1] > pixels.last[0] + 15, 'picture moves to the right: ' + JSON.stringify(pixels));
+  } finally { await browser.close(); }
+});
+test('project tools retrieve, copy and safely update a saved project', async () => {
+  const list = await call('cliproom_list_projects'); assert.ok(list.projects.some(project => project.id === savedProjectId));
+  const read = await call('cliproom_get_project',{project_id:savedProjectId}); assert.equal(read.project.state.name,'MCP test');
+  const exported = await call('cliproom_get_project',{project_id:savedProjectId,output:'project.json'}); assert.equal(exported.revision,1);
+  const project = JSON.parse(await fs.readFile(exported.path,'utf8')); project.state.name='Copied project';
+  await fs.writeFile(path.join(work,'copy.json'),JSON.stringify(project));
+  const created = await call('cliproom_save_project',{project_path:'copy.json'}); assert.equal(created.revision,1); assert.notEqual(created.project_id,savedProjectId);
+  const updated = await call('cliproom_save_project',{project_path:'copy.json',project_id:created.project_id,base_revision:1}); assert.equal(updated.revision,2);
+  await assert.rejects(call('cliproom_save_project',{project_path:'copy.json',project_id:created.project_id,base_revision:1}),/changed on another device/);
+  await assert.rejects(call('cliproom_get_project',{project_id:savedProjectId,output:'project.json'}),/already exists/);
+});
+test('keyframes are editable and saved from the Cliproom inspector', async () => {
+  const browser = await chromium.launch({ headless:true, ...(process.env.ROOMSUITE_BROWSER_PATH ? {executablePath:process.env.ROOMSUITE_BROWSER_PATH} : {}) });
+  try {
+    const page = await browser.newPage({ viewport:{width:1440,height:1000} }); await page.goto(base + '/cliproom/');
+    await page.locator('#fileInput').setInputFiles(path.join(work,'cropped.png'));
+    await page.waitForFunction(() => Number(document.querySelector('#assetCount').textContent) === 1 && !document.querySelector('#importBtn').disabled);
+    await page.locator('#addKeyframeBtn').click();
+    await page.evaluate(() => seek(1));
+    await page.locator('#addKeyframeBtn').click();
+    await page.locator('#keyframeX').fill('75'); await page.locator('#keyframeX').dispatchEvent('change');
+    await page.locator('#saveBtn').click();
+    await page.waitForFunction(() => revision === 1);
+    const saved = await page.evaluate(async () => (await (await fetch('/api/projects/' + projectId)).json()).state.clips[0]);
+    assert.equal(saved.keyframes.length,2); assert.equal(saved.keyframes[1].time,1); assert.equal(saved.keyframes[1].x,75);
+    assert.equal(await page.locator('.keyframe-marker').count(),2);
+  } finally { await browser.close(); }
+});
+test('render endpoint rejects requests without the same-origin header or a valid project', async () => {
+  const blocked = await fetch(base + '/api/render', { method:'POST', headers:{ Origin:'https://other.invalid','X-Cliproom-Request':'1','Content-Type':'application/json' }, body:'{}' });
+  assert.equal(blocked.status,403);
+  const invalid = await fetch(base + '/api/render', { method:'POST', headers:{ Origin:base,'X-Cliproom-Request':'1','Content-Type':'application/json' }, body:'{}' });
+  assert.equal(invalid.status,400);
+  const saved = await (await fetch(base + '/api/projects/' + savedProjectId)).json();
+  saved.state.clips[0].keyframes[1].time = saved.state.clips[0].keyframes[0].time;
+  const duplicate = await fetch(base + '/api/render', { method:'POST', headers:{ Origin:base,'X-Cliproom-Request':'1','Content-Type':'application/json' }, body:JSON.stringify({project:saved.state}) });
+  assert.equal(duplicate.status,400); assert.match((await duplicate.json()).error,/unique/);
 });
 test('workspace containment and no-overwrite behavior are enforced', async () => {
   await assert.rejects(call('soundroom_edit',{ input:'../outside.wav',output:'no.wav' }),/inside the configured MCP workspace/);

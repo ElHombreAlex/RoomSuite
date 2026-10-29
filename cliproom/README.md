@@ -1,6 +1,6 @@
 # Cliproom
 
-Cliproom is a small, self-hosted browser video editor, designed as a companion to Pixelroom. It uses no external APIs, CDN, accounts, build step, or npm packages. The browser previews and renders the video; the included Node.js server stores your project and original media for use from other devices.
+Cliproom is a small, self-hosted browser video editor, designed as a companion to Pixelroom. The ordinary editor uses no external APIs, CDN, accounts, build step, or npm packages. The browser previews and renders the video; the included Node.js server stores your project and original media for use from other devices. The optional headless render endpoint requires the MCP dependencies and Chromium described below.
 
 ## Run it
 
@@ -54,11 +54,35 @@ For an always-on installation, run `node server.js` as a dedicated, unprivileged
 - Drag a clip horizontally to move it in time, or drag its left edge to trim its start. Drag the right edge of a video or image to trim its end. Select a clip to change its track, adjust its source in/out points, timeline start, speed and volume, or place it at the playhead. Select a visible video or photo directly on the preview or on the timeline, then drag it on the preview to position it; drag its corner to resize it or its round handle to rotate it freely. The inspector also provides exact position and rotation fields, fit/fill, opacity, horizontal flip and color controls. Photos can be given a duration. Scroll inside the timeline to see additional tracks, use the zoom controls for finer adjustments, and mute audio or hide picture tracks when needed. The × beside a track removes it and its clips; undo can restore them.
 - Click or tap an audio clip at the point where you want to cut it. A short delay distinguishes a single click from a double-click: double-click or double-tap an audio clip to open and focus its speed control without cutting it. All audio controls remain in the details panel, where **Audio clip options** also lets you select any audio clip without cutting it. Drag the body to move it, its left edge to trim, or its right edge to stretch or shorten it without trimming its source; stretching changes its playback speed. Keyboard users can select a clip, move the playhead and use **Split**, or adjust speed in the inspector. **Fit audio to entire video** moves the selected audio to the start and adjusts its tempo to the length of the picture. This changes the tempo uniformly; it does not detect beats or synchronize them to cuts. Speeds from 0.5× to 4× are supported, so trim the source if the requested fit falls outside that range. Cliproom asks the browser to preserve pitch where supported.
 - Select a clip to set fade-in and fade-out durations. **Dissolve from previous** overlaps it with the preceding video clip on the same track; the fade-in duration sets the overlap (one second if the field is zero). **Crossfade from previous** does the equivalent for audio clips. Video fades affect their original sound too. Clip placement and transitions can be adjusted or undone.
+- Animate a selected video, image, or audio clip with **Keyframes** in the inspector. Move the playhead into the clip, choose **Add or select at playhead**, and adjust its values; repeat at another time. Markers appear on the clip, and the selector, **Go to keyframe**, and **Delete keyframe** let you revise them. Video and images can animate size, horizontal and vertical position, opacity, rotation, brightness, contrast, saturation and volume; audio can animate volume. Values interpolate linearly between keyframes and fade controls still apply. Keyframe times are measured in source seconds, so motion follows the source when a clip is moved, trimmed, split, or retimed. To position an animated clip, edit its keyframe values in the inspector.
 - Click the ruler to move the playhead, then **Split** the selected video or audio clip. Duplicate, remove, undo and redo are available. The previous/next frame buttons move the playhead in 1/30-second steps. Add a text title and select it on the preview or timeline; drag it on the preview to move it, its corner to resize it, or its round handle to rotate it freely. You can also drag the title or its edges along the timeline to change its timing. The inspector provides exact position and rotation, size, text width, font, bold, italic and color controls. Named fonts use fonts available on the device and may look different on another device; Cliproom uses a fallback if a font is missing. Arrow keys nudge a selected picture or title; hold Shift for a larger step. Hold Shift while rotating to snap to 15-degree steps.
 - Choose a landscape, portrait, or square canvas, and a 720p or 1080p export size. **Export** renders the current timeline with its titles and audio and downloads a video to the device. The browser chooses MP4 or WebM according to its supported codecs.
 - Name the project and press **Save**. On another device, open the same Cliproom URL and choose **Open**. The project references the source files already stored on the shared server; those files do not need to be uploaded again.
 - Saving is manual, not live collaboration or automatic syncing. If another device saved the same project since you opened it, Cliproom offers to save your version as a copy instead of overwriting the newer one. Make sure a save completes before switching devices.
-- Projects from the first and second Cliproom versions open in the new timeline; projects from the first version retain their picture order and audible soundtrack range. Saving an older project upgrades its format; an older Cliproom version cannot reopen the upgraded project. Back up the data directory before upgrading if you want to keep a version usable by the old app.
+- Projects from earlier Cliproom versions open in the new timeline; projects from the first version retain their picture order and audible soundtrack range. Saving an older project upgrades it to version 4; an older Cliproom version cannot reopen the upgraded project. Back up the data directory before upgrading if you want to keep a version usable by the old app.
+
+## Render from a program
+
+The optional `POST /api/render` endpoint accepts a saved project ID or project JSON and returns an MP4 or WebM file without opening an editor for the caller. It runs the same Cliproom exporter in an isolated headless Chromium process on the server, with no external API. It requires Node.js 20+, the optional dependencies and browser installed **on the server**, under the user running the RoomSuite service:
+
+```sh
+npm ci --prefix mcp
+cd mcp && npx playwright install chromium && cd ..
+```
+
+Set `ROOMSUITE_BROWSER_PATH` in the server process environment to use a compatible system browser instead, or ensure the service user can access Playwright's installed browser. `CLIPROOM_RENDER_TIMEOUT_MS` sets the server render timeout in milliseconds (default 600000); allow longer than the project duration. Restart the RoomSuite service after changing its environment.
+
+For a local server, replace the ID below with a saved project ID:
+
+```sh
+curl -fS -D render-headers.txt -o render-video \
+  -H 'Origin: http://127.0.0.1:8090' -H 'X-Cliproom-Request: 1' \
+  -H 'Content-Type: application/json' \
+  --data '{"project_id":"00000000-0000-4000-8000-000000000000"}' \
+  http://127.0.0.1:8090/api/render
+```
+
+Alternatively send `{"project": <project state>}` or `{"project": <saved project wrapper>}`. Referenced assets must already be in that server's Cliproom library. Inspect the `Content-Type` response header to choose the `.mp4` or `.webm` extension. The endpoint requires the same-origin write headers and obeys the same host restrictions as project writes; it does not add authentication. The MCP equivalent, `cliproom_render_project`, saves the response directly in its configured workspace. See the [MCP guide](../mcp/README.md) for project and media tools.
 
 ## Practical limits
 
@@ -66,7 +90,7 @@ Import and playback depend on the browser's own decoders, so not every codec in 
 
 Export happens in real time and keeps encoded chunks in browser memory. Keep the tab visible until it finishes; export stops if the tab is hidden. Try 720p for older devices. Playback and export can stutter or drift if the device or network cannot decode media quickly enough, and they are not intended as frame-accurate professional editing. The frame buttons use 1/30-second steps rather than the source file's exact frame rate. Pitch preservation and color adjustments depend on browser support. Some mobile browsers do not support the required recording or audio APIs; the export dialog reports the available format.
 
-This version supports multiple picture and audio tracks, fades, cross-dissolves and text overlays. It does not yet provide keyframes, automatic beat matching, advanced effects, a project archive, or an in-app storage cleanup tool. Several simultaneous videos can place significant load on a device; the actual number of usable tracks depends on its hardware, browser, media and network. Imported media stays on the server even if removed from the timeline; manage storage and backups on the server. Project media is stored on that server without application-level encryption.
+This version supports multiple picture and audio tracks, keyframes, fades, cross-dissolves and text overlays. It does not yet provide automatic beat matching, advanced effects, a project archive, or an in-app storage cleanup tool. Several simultaneous videos can place significant load on a device; the actual number of usable tracks depends on its hardware, browser, media and network. Imported media stays on the server even if removed from the timeline; manage storage and backups on the server. Project media is stored on that server without application-level encryption.
 
 ## Check the service
 

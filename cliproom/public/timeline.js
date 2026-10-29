@@ -12,6 +12,31 @@
   const active = (clip, time) => time >= clip.start && time < end(clip);
   const order = (a, b) => a.start - b.start || (a.transitionFrom === b.id ? 1 : b.transitionFrom === a.id ? -1 : 0);
   const sourceAt = (clip, time) => clip.in + limit(time - clip.start, 0, length(clip)) * rate(clip);
+  const animatedDefaults = { scale:1, x:50, y:50, opacity:1, rotation:0, brightness:100, contrast:100, saturation:100, volume:1 };
+  // Keyframe times are source seconds, like clip.in/out. This keeps motion
+  // attached to the media when a clip is moved, trimmed, split or retimed.
+  function animatedValues(clip, timelineTime) {
+    const result = {}, sourceTime = sourceAt(clip, timelineTime);
+    const frames = (Array.isArray(clip.keyframes) ? clip.keyframes : [])
+      .filter(frame => frame && Number.isFinite(frame.time) && frame.time >= 0)
+      .slice().sort((a, b) => a.time - b.time);
+    for (const [property, fallback] of Object.entries(animatedDefaults)) {
+      const base = Number.isFinite(clip[property]) ? clip[property] : fallback;
+      let previousTime = 0, previousValue = base, value = base;
+      for (const frame of frames) {
+        if (!Number.isFinite(frame[property])) continue;
+        if (frame.time > sourceTime) {
+          const span = frame.time - previousTime;
+          const mix = span > 0 ? limit((sourceTime - previousTime) / span, 0, 1) : 1;
+          value = previousValue + (frame[property] - previousValue) * mix;
+          break;
+        }
+        previousTime = frame.time; previousValue = frame[property]; value = previousValue;
+      }
+      result[property] = value;
+    }
+    return result;
+  }
   function normalizeRotation(value) {
     const degrees = Number(value);
     return Number.isFinite(degrees) ? ((degrees + 180) % 360 + 360) % 360 - 180 : 0;
@@ -48,19 +73,20 @@
   }
 
   function empty(id) {
-    return { version: 3, name: 'Untitled story', aspect: '16:9', quality: '720p',
+    return { version: 4, name: 'Untitled story', aspect: '16:9', quality: '720p',
       assets: [], videoTracks: [{ id: id(), name: 'Video 1', muted:false, hidden:false }], audioTracks: [{ id: id(), name: 'Audio 1', muted:false }],
       clips: [], audioClips: [], titles: [] };
   }
   function migrate(old, id) {
     if (!old || typeof old !== 'object') throw new Error('This project is invalid.');
-    if (old.version === 2 || old.version === 3) {
+    if (old.version === 2 || old.version === 3 || old.version === 4) {
       if (!Array.isArray(old.videoTracks) || !old.videoTracks.length || !Array.isArray(old.audioTracks) || !old.audioTracks.length ||
           !Array.isArray(old.clips) || !Array.isArray(old.audioClips) || !Array.isArray(old.titles) || !Array.isArray(old.assets)) {
         throw new Error('This project is missing timeline data.');
       }
-      if (old.version === 3) return old;
-      return { ...old, version:3,
+      if (old.version === 4) return old;
+      if (old.version === 3) return { ...old, version:4 };
+      return { ...old, version:4,
         videoTracks:old.videoTracks.map(track => ({ muted:false, hidden:false, ...track })),
         audioTracks:old.audioTracks.map(track => ({ muted:false, ...track })),
         clips:old.clips.map(videoDefaults), audioClips:old.audioClips.map(audioDefaults), titles:old.titles.map(titleDefaults) };
@@ -98,7 +124,7 @@
     // The incoming picture is drawn over an opaque outgoing picture during a
     // dissolve. Fading both pictures to the canvas would introduce a dark dip.
     const outFactor = incoming ? 1 : fadeOut ? limit((end(clip) - time) / fadeOut, 0, 1) : 1;
-    return limit(Number.isFinite(clip.opacity) ? clip.opacity : 1, 0, 1) * Math.min(inFactor, outFactor);
+    return limit(animatedValues(clip, time).opacity, 0, 1) * Math.min(inFactor, outFactor);
   }
   function dissolve(project, clipId, kind, requested = 1) {
     const clips = kind === 'audio' ? project.audioClips : project.clips;
@@ -119,10 +145,11 @@
     if (!clip || time - clip.start < .05 || end(clip) - time < .05) return null;
     const splitAt = sourceAt(clip, time);
     const next = { ...clip, id:id(), start:time, in:splitAt, fadeIn:0 };
+    if (Array.isArray(clip.keyframes)) next.keyframes = clip.keyframes.map(frame => ({ ...frame }));
     delete next.transitionFrom;
     clip.out = splitAt; clip.fadeOut = 0; clip.fadeIn = Math.min(clip.fadeIn || 0, length(clip)); next.fadeOut = Math.min(next.fadeOut || 0, length(next));
     for (const later of clips) if (later.transitionFrom === clip.id) later.transitionFrom = next.id;
     clips.push(next); return next;
   }
-  return { MIN_RATE, MAX_RATE, rate, rateForDuration, sourceAt, normalizeRotation, insideRotatedBox, createAudioClickGesture, empty, migrate, length, end, active, order, duration, envelope, visualOpacity, dissolve, split };
+  return { MIN_RATE, MAX_RATE, rate, rateForDuration, sourceAt, animatedValues, normalizeRotation, insideRotatedBox, createAudioClickGesture, empty, migrate, length, end, active, order, duration, envelope, visualOpacity, dissolve, split };
 });

@@ -79,4 +79,4 @@ The tests cover the existing timeline and server behavior, suite routes and stat
 
 ## Coding agents
 
-The optional [RoomSuite MCP server](mcp/README.md) lets coding agents create images, audio, vector artwork and video through the rooms. It runs separately from the normal application and uses isolated browser sessions.
+The optional [RoomSuite MCP server](mcp/README.md) lets coding agents inspect files and media, manage Cliproom projects, and create images, audio, vector artwork and animated videos through the rooms. It runs separately from the normal application and uses isolated browser sessions. Cliproom also offers a [headless project render endpoint](cliproom/README.md#render-from-a-program).

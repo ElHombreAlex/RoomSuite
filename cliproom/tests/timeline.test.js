@@ -67,7 +67,7 @@ test('version 2 projects open with their old timing and title placement', () => 
   project.clips.push({ id:'a', start:0, in:1, out:5 });
   project.titles.push({ id:'t', text:'Hello', position:'bottom', size:6 });
   const migrated = timeline.migrate(project, id);
-  assert.equal(migrated.version, 3);
+  assert.equal(migrated.version, 4);
   assert.equal(timeline.length(migrated.clips[0]), 4);
   assert.deepEqual([migrated.titles[0].x, migrated.titles[0].y], [50, 82]);
   assert.equal(migrated.titles[0].rotation, 0);
@@ -127,4 +127,33 @@ test('rotation normalizes angles and hit testing follows a rotated rectangle', (
   assert.equal(timeline.insideRotatedBox(100, 85, box, 90), true);
   assert.equal(timeline.insideRotatedBox(120, 70, box, 45), true);
   assert.equal(timeline.insideRotatedBox(120, 30, box, 45), false);
+});
+
+test('keyframes interpolate sparse properties in source time', () => {
+  const clip = { start:10, in:2, out:8, rate:2, x:20, y:50, scale:1, opacity:1, brightness:100, volume:1,
+    keyframes:[{time:6,x:90,scale:2,brightness:60,opacity:.4,volume:.2},{time:2,x:10,scale:1,brightness:100,opacity:1,volume:1}] };
+  const middle = timeline.animatedValues(clip, 11);
+  assert.equal(middle.x, 50); assert.equal(middle.scale, 1.5); assert.equal(middle.brightness, 80);
+  assert.equal(middle.opacity, .7); assert.equal(middle.volume, .6); assert.equal(middle.y, 50);
+  assert.equal(timeline.visualOpacity({clips:[clip]}, clip, 11), .7);
+  assert.equal(timeline.animatedValues(clip, 12).x, 90);
+});
+
+test('keyframes remain attached to source time after splitting and retiming', () => {
+  const project = timeline.empty(id), trackId = project.videoTracks[0].id;
+  const clip = { id:'a', trackId, start:10, in:2, out:8, rate:2, x:20,
+    keyframes:[{time:2,x:10},{time:6,x:90}] };
+  project.clips.push(clip);
+  const second = timeline.split(project, 'a', 'video', 11, id);
+  assert.equal(timeline.animatedValues(second,11.5).x,70);
+  second.rate = 1;
+  assert.equal(timeline.animatedValues(second,12).x,70);
+  second.keyframes[0].x = 99;
+  assert.equal(clip.keyframes[0].x,10);
+});
+
+test('version 3 projects migrate without changing the original state', () => {
+  const old = timeline.empty(id); old.version = 3; old.clips.push({ id:'a', start:0, in:0, out:2, opacity:.8 });
+  const migrated = timeline.migrate(old,id);
+  assert.equal(migrated.version,4); assert.equal(old.version,3); assert.equal(timeline.animatedValues(migrated.clips[0],1).opacity,.8);
 });
