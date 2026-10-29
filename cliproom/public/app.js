@@ -138,9 +138,10 @@ function renderInspector() {
       ${isVideo ? `
         <label class="field"><span>Frame</span><select id="clipFit">${option('contain','Fit inside frame',item.fit)}${option('cover','Fill frame',item.fit)}</select></label>
         ${slider('Size','clipScale',Math.round(item.scale * 100),10,200)}
-        <div class="field-row">${field('Horizontal %','clipX',item.x,'type="number" min="0" max="100" step="1"')}${field('Vertical %','clipY',item.y,'type="number" min="0" max="100" step="1"')}</div>
+        <div class="field-row">${field('Horizontal %','clipX',item.x,'type="number" min="-100" max="200" step="1"')}${field('Vertical %','clipY',item.y,'type="number" min="-100" max="200" step="1"')}</div>
         ${slider('Opacity','clipOpacity',Math.round(item.opacity * 100),0,100)}
-        <label class="field"><span>Rotation</span><select id="clipRotation">${[0,90,180,270].map(deg => option(String(deg), deg + '°', String(item.rotation))).join('')}</select></label>
+        ${field('Rotation (°)','clipRotation',T.normalizeRotation(item.rotation).toFixed(1),'type="number" step="1"')}
+        <p class="mini-hint">Drag the picture on the preview; use its handles to resize or rotate.</p>
         <label class="check-field"><input id="clipFlip" type="checkbox" ${item.flipX ? 'checked' : ''}> Flip horizontally</label>
         <div class="section-label inspector-section"><span>COLOR</span><button class="text-button" id="resetColorBtn">Reset</button></div>
         ${slider('Brightness','clipBrightness',item.brightness,0,200,!supportsFilters)}
@@ -159,7 +160,8 @@ function renderInspector() {
       <div class="field-row">${field('Start (sec)','titleStart',item.start.toFixed(1),'type="number" min="0" step="0.1"')}${field('End (sec)','titleEnd',item.end.toFixed(1),'type="number" min="0" step="0.1"')}</div>
       <label class="field"><span>Position preset</span><select id="titlePosition">${option('top','Top',item.position)}${option('middle','Middle',item.position)}${option('bottom','Bottom',item.position)}${option('custom','Custom',item.position)}</select></label>
       <div class="field-row">${field('Horizontal %','titleX',Math.round(item.x),'type="number" min="0" max="100" step="1"')}${field('Vertical %','titleY',Math.round(item.y),'type="number" min="0" max="100" step="1"')}</div>
-      <p class="mini-hint">Drag the text on the preview; drag its corner to resize.</p>
+      ${field('Rotation (°)','titleRotation',T.normalizeRotation(item.rotation).toFixed(1),'type="number" step="1"')}
+      <p class="mini-hint">Drag the text on the preview; use its handles to resize or rotate.</p>
       <label class="field"><span>Font</span><select id="titleFont">${TITLE_FONTS.map(font => option(font.id, font.label, item.font)).join('')}</select><small>Named fonts use those available on this device.</small></label>
       <div class="check-row"><label class="check-field"><input id="titleBold" type="checkbox" ${item.bold ? 'checked' : ''}> Bold</label><label class="check-field"><input id="titleItalic" type="checkbox" ${item.italic ? 'checked' : ''}> Italic</label></div>
       ${slider('Size','titleSize',item.size,2,30)}${slider('Text width','titleWidth',item.width,10,100)}
@@ -428,6 +430,14 @@ function drawCover(source, clip, opacity) {
   try { context.drawImage(source, -w / 2, -h / 2, w, h); } catch { /* media may still be decoding */ }
   context.restore();
 }
+function videoLayout(clip) {
+  const source = asset(clip.assetId), sw = number(source?.width) || canvas.width, sh = number(source?.height) || canvas.height;
+  const boxWidth = canvas.width * number(clip.scale, 1), boxHeight = canvas.height * number(clip.scale, 1);
+  const scale = clip.fit === 'cover' ? Math.max(boxWidth / sw, boxHeight / sh) : Math.min(boxWidth / sw, boxHeight / sh);
+  const width = Math.min(boxWidth, sw * scale), height = Math.min(boxHeight, sh * scale);
+  const centerX = canvas.width * number(clip.x, 50) / 100, centerY = canvas.height * number(clip.y, 50) / 100;
+  return { centerX, centerY, width, height, x:centerX - width / 2, y:centerY - height / 2 };
+}
 function titleLayout(title) {
   const size = Math.round(canvas.width * title.size / 100), maxWidth = canvas.width * number(title.width, 84) / 100;
   const fontFamily = TITLE_FONTS.find(font => font.id === title.font)?.family || 'sans-serif';
@@ -453,19 +463,24 @@ function titleLayout(title) {
 function drawTitle(title) {
   const layout = titleLayout(title);
   context.save(); context.font = layout.font; context.fillStyle = title.color; context.textAlign = 'center'; context.textBaseline = 'middle'; context.shadowColor = 'rgba(0,0,0,.72)'; context.shadowBlur = layout.size * .15;
-  layout.displayed.forEach((line, i, all) => context.fillText(line, layout.centerX, layout.centerY + (i - (all.length - 1) / 2) * layout.lineHeight, layout.maxWidth));
+  context.translate(layout.centerX, layout.centerY); context.rotate(T.normalizeRotation(title.rotation) * Math.PI / 180);
+  layout.displayed.forEach((line, i, all) => context.fillText(line, 0, (i - (all.length - 1) / 2) * layout.lineHeight, layout.maxWidth));
   context.restore();
 }
-function updateTitleSelection() {
-  const overlay = $('titleSelection'), title = selected?.type === 'title' ? selectedItem() : null;
+function updateStageSelection() {
+  const overlay = $('stageSelection'), item = selectedItem();
   const at = currentTime >= totalDuration() && totalDuration() > 0 ? Math.max(0, totalDuration() - .001) : currentTime;
-  if (!title || playing || recording || exportPreparing || at < title.start || at >= title.end) { overlay.classList.add('hidden'); return; }
-  const canvasRect = canvas.getBoundingClientRect(), frameRect = $('canvasFrame').getBoundingClientRect(), layout = titleLayout(title);
+  const isTitle = selected?.type === 'title', isVideo = selected?.type === 'clip';
+  const active = item && (isTitle ? at >= item.start && at < item.end : isVideo && T.active(item, at) && !state.videoTracks.find(track => track.id === item.trackId)?.hidden);
+  if (!active || playing || recording || exportPreparing) { overlay.classList.add('hidden'); return; }
+  const canvasRect = canvas.getBoundingClientRect(), frameRect = $('canvasFrame').getBoundingClientRect(), layout = isTitle ? titleLayout(item) : videoLayout(item);
   if (!canvasRect.width || !canvasRect.height) { overlay.classList.add('hidden'); return; }
   overlay.style.left = `${canvasRect.left - frameRect.left + layout.x / canvas.width * canvasRect.width}px`;
   overlay.style.top = `${canvasRect.top - frameRect.top + layout.y / canvas.height * canvasRect.height}px`;
   overlay.style.width = `${layout.width / canvas.width * canvasRect.width}px`;
   overlay.style.height = `${layout.height / canvas.height * canvasRect.height}px`;
+  overlay.style.transform = `rotate(${T.normalizeRotation(item.rotation)}deg)`;
+  overlay.setAttribute('aria-label', `Selected ${isTitle ? 'text' : 'picture'}: drag to move`);
   overlay.classList.remove('hidden');
 }
 function renderFrame() {
@@ -481,7 +496,7 @@ function renderFrame() {
     }
   }
   for (const title of state.titles) if (at >= title.start && at < title.end) drawTitle(title);
-  updateTitleSelection();
+  updateStageSelection();
 }
 function setTime(el, value) {
   const apply = () => { try { if (Math.abs(el.currentTime - value) > .02) el.currentTime = Math.max(0, value); } catch { /* a seek can wait for metadata */ } };
@@ -587,7 +602,7 @@ async function startPlayback(fromStart = false, onReady = null) {
 function stopPlayback() {
   playbackGeneration++; playing = false; cancelAnimationFrame(frameId); frameId = 0;
   for (const { el } of elements.values()) el.pause();
-  activeMedia = new Set(); updateTime(); updateTitleSelection();
+  activeMedia = new Set(); updateTime(); updateStageSelection();
 }
 function tick(now) {
   if (!playing) return;
@@ -728,7 +743,7 @@ function addTrack(kind) {
 }
 $('addVideoTrackBtn').addEventListener('click', () => addTrack('video'));
 $('addAudioTrackBtn').addEventListener('click', () => addTrack('audio'));
-$('addTitleBtn').addEventListener('click', () => change(() => { const total = totalDuration(), start = Math.min(currentTime, Math.max(0, total - 0.1)); const title = { id:uid(), text:'Your title here', start, end:Math.min(total, start + 3), position:'middle', x:50, y:50, width:84, font:'sans-serif', bold:true, italic:false, size:6, color:'#ffffff' }; state.titles.push(title); selected = { type:'title', id:title.id }; }));
+$('addTitleBtn').addEventListener('click', () => change(() => { const total = totalDuration(), start = Math.min(currentTime, Math.max(0, total - 0.1)); const title = { id:uid(), text:'Your title here', start, end:Math.min(total, start + 3), position:'middle', x:50, y:50, width:84, rotation:0, font:'sans-serif', bold:true, italic:false, size:6, color:'#ffffff' }; state.titles.push(title); selected = { type:'title', id:title.id }; }));
 $('removeBtn').addEventListener('click', () => change(() => { if (!selected) return; if (selected.type === 'clip') state.clips = state.clips.filter(c => c.id !== selected.id); if (selected.type === 'title') state.titles = state.titles.filter(t => t.id !== selected.id); if (selected.type === 'audio') state.audioClips = state.audioClips.filter(c => c.id !== selected.id); selected = null; }));
 $('duplicateBtn').addEventListener('click', () => change(() => {
   const item = selectedItem(); if (!item) return;
@@ -791,9 +806,9 @@ $('inspectorBody').addEventListener('change', e => {
         if (id === 'clipFit') item.fit = value;
         if (id === 'clipScale') item.scale = clamp(number(value) / 100, .1, 2);
         if (id === 'clipOpacity') item.opacity = clamp(number(value) / 100, 0, 1);
-        if (id === 'clipX') item.x = clamp(number(value, item.x), 0, 100);
-        if (id === 'clipY') item.y = clamp(number(value, item.y), 0, 100);
-        if (id === 'clipRotation') item.rotation = [0,90,180,270].includes(Number(value)) ? Number(value) : 0;
+        if (id === 'clipX') item.x = clamp(number(value, item.x), -100, 200);
+        if (id === 'clipY') item.y = clamp(number(value, item.y), -100, 200);
+        if (id === 'clipRotation') item.rotation = T.normalizeRotation(number(value));
         if (id === 'clipFlip') item.flipX = e.target.checked;
         if (id === 'clipBrightness') item.brightness = clamp(number(value, 100), 0, 200);
         if (id === 'clipContrast') item.contrast = clamp(number(value, 100), 0, 200);
@@ -811,6 +826,7 @@ $('inspectorBody').addEventListener('change', e => {
       if (id === 'titleSize') item.size = clamp(number(value, 6), 2, 30);
       if (id === 'titleWidth') item.width = clamp(number(value, 84), 10, 100);
       if (id === 'titleFont' && TITLE_FONTS.some(font => font.id === value)) item.font = value;
+      if (id === 'titleRotation') item.rotation = T.normalizeRotation(number(value));
       if (id === 'titleBold') item.bold = e.target.checked;
       if (id === 'titleItalic') item.italic = e.target.checked;
     }
@@ -820,48 +836,66 @@ $('inspectorBody').addEventListener('change', e => {
 $('zoomInBtn').addEventListener('click', () => { timelineZoom = Math.min(8, timelineZoom * 2); renderTimeline(); });
 $('zoomOutBtn').addEventListener('click', () => { timelineZoom = Math.max(1, timelineZoom / 2); renderTimeline(); });
 $('zoomFitBtn').addEventListener('click', () => { timelineZoom = 1; $('timelineScroll').scrollLeft = 0; renderTimeline(); });
+function stageItemAt(x, y, at) {
+  for (const item of [...state.titles].reverse()) {
+    if (at >= item.start && at < item.end && T.insideRotatedBox(x, y, titleLayout(item), item.rotation)) return { type:'title', item };
+  }
+  for (const track of [...state.videoTracks].reverse()) {
+    if (track.hidden) continue;
+    const visible = state.clips.filter(item => item.trackId === track.id && T.active(item, at)).sort(T.order).reverse();
+    for (const item of visible) if (T.insideRotatedBox(x, y, videoLayout(item), item.rotation)) return { type:'clip', item };
+  }
+  return null;
+}
 $('canvasFrame').addEventListener('pointerdown', event => {
-  if (event.button !== 0 || recording || exportPreparing || event.target.closest('#stageEmpty')) return;
-  const rect = canvas.getBoundingClientRect();
-  const onSelection = !!event.target.closest('#titleSelection');
-  if (!rect.width || !rect.height || (!onSelection && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom))) return;
+  if (event.button !== 0 || !event.isPrimary || stageDrag || recording || exportPreparing || event.target.closest('#stageEmpty')) return;
+  const rect = canvas.getBoundingClientRect(), onSelection = !!event.target.closest('#stageSelection');
+  const resize = !!event.target.closest('.stage-resize'), rotate = !!event.target.closest('.stage-rotate');
+  const inside = event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
+  if (!rect.width || !rect.height || (!inside && !onSelection)) return;
   const px = (event.clientX - rect.left) / rect.width * canvas.width, py = (event.clientY - rect.top) / rect.height * canvas.height;
   const at = currentTime >= totalDuration() && totalDuration() > 0 ? Math.max(0, totalDuration() - .001) : currentTime;
-  let title = selected?.type === 'title' && event.target.closest('#titleSelection') ? selectedItem() : null;
-  if (!title) title = [...state.titles].reverse().find(item => {
-    if (at < item.start || at >= item.end) return false;
-    const box = titleLayout(item);
-    return px >= box.x && px <= box.x + box.width && py >= box.y && py <= box.y + box.height;
-  });
-  if (!title) return;
-  const resize = event.target.classList.contains('title-resize');
-  selected = { type:'title', id:title.id }; stopPlayback(); render();
-  const centerX = rect.left + rect.width * title.x / 100, centerY = rect.top + rect.height * title.y / 100;
-  stageDrag = { id:title.id, before:JSON.stringify(state), mode:resize ? 'resize' : 'move', x:event.clientX, y:event.clientY,
-    centerX, centerY, distance:Math.max(10, Math.hypot(event.clientX - centerX, event.clientY - centerY)),
-    original:{ x:title.x, y:title.y, size:title.size, width:title.width }, rect, moved:false };
+  const existing = onSelection && ['title','clip'].includes(selected?.type) ? { type:selected.type, item:selectedItem() } : null;
+  const hit = resize || rotate ? existing : (inside ? stageItemAt(px, py, at) : null) || existing;
+  if (!hit?.item) return;
+  const item = hit.item; selected = { type:hit.type, id:item.id }; stopPlayback(); render();
+  const centerX = rect.left + rect.width * number(item.x, 50) / 100, centerY = rect.top + rect.height * number(item.y, 50) / 100;
+  stageDrag = { id:item.id, type:hit.type, pointerId:event.pointerId, before:JSON.stringify(state), mode:rotate ? 'rotate' : resize ? 'resize' : 'move', x:event.clientX, y:event.clientY,
+    centerX, centerY, angle:Math.atan2(event.clientY - centerY, event.clientX - centerX),
+    distance:Math.max(10, Math.hypot(event.clientX - centerX, event.clientY - centerY)),
+    original:{ x:number(item.x, 50), y:number(item.y, 50), size:item.size, width:item.width, scale:number(item.scale, 1), rotation:T.normalizeRotation(item.rotation) }, rect, moved:false };
   $('canvasFrame').setPointerCapture(event.pointerId); event.preventDefault();
 });
 $('canvasFrame').addEventListener('pointermove', event => {
-  if (!stageDrag) return; const title = state.titles.find(item => item.id === stageDrag.id); if (!title) return;
+  if (!stageDrag || event.pointerId !== stageDrag.pointerId) return;
+  const item = (stageDrag.type === 'title' ? state.titles : state.clips).find(entry => entry.id === stageDrag.id); if (!item) return;
   const dx = event.clientX - stageDrag.x, dy = event.clientY - stageDrag.y;
   if (Math.hypot(dx,dy) < 3 && !stageDrag.moved) return;
   stageDrag.moved = true;
   if (stageDrag.mode === 'move') {
-    title.x = clamp(stageDrag.original.x + dx / stageDrag.rect.width * 100, 0, 100);
-    title.y = clamp(stageDrag.original.y + dy / stageDrag.rect.height * 100, 0, 100); title.position = 'custom';
+    const low = stageDrag.type === 'clip' ? -100 : 0, high = stageDrag.type === 'clip' ? 200 : 100;
+    item.x = clamp(stageDrag.original.x + dx / stageDrag.rect.width * 100, low, high);
+    item.y = clamp(stageDrag.original.y + dy / stageDrag.rect.height * 100, low, high);
+    if (stageDrag.type === 'title') item.position = 'custom';
+  } else if (stageDrag.mode === 'rotate') {
+    const angle = Math.atan2(event.clientY - stageDrag.centerY, event.clientX - stageDrag.centerX);
+    let degrees = T.normalizeRotation(stageDrag.original.rotation + (angle - stageDrag.angle) * 180 / Math.PI);
+    if (event.shiftKey) degrees = Math.round(degrees / 15) * 15;
+    item.rotation = Math.round(T.normalizeRotation(degrees) * 10) / 10;
   } else {
     const factor = Math.hypot(event.clientX - stageDrag.centerX, event.clientY - stageDrag.centerY) / stageDrag.distance;
-    title.size = Math.round(clamp(stageDrag.original.size * factor, 2, 30) * 10) / 10;
-    title.width = Math.round(clamp(stageDrag.original.width * factor, 10, 100));
+    if (stageDrag.type === 'title') {
+      item.size = Math.round(clamp(stageDrag.original.size * factor, 2, 30) * 10) / 10;
+      item.width = Math.round(clamp(stageDrag.original.width * factor, 10, 100));
+    } else item.scale = Math.round(clamp(stageDrag.original.scale * factor, .1, 2) * 1000) / 1000;
   }
   renderFrame();
 });
-$('canvasFrame').addEventListener('pointerup', () => {
-  if (!stageDrag) return; const before = stageDrag.before; stageDrag = null; commitPrevious(before);
+$('canvasFrame').addEventListener('pointerup', event => {
+  if (!stageDrag || event.pointerId !== stageDrag.pointerId) return; const before = stageDrag.before; stageDrag = null; commitPrevious(before);
 });
-$('canvasFrame').addEventListener('pointercancel', () => {
-  if (!stageDrag) return; state = JSON.parse(stageDrag.before); stageDrag = null; render();
+$('canvasFrame').addEventListener('pointercancel', event => {
+  if (!stageDrag || event.pointerId !== stageDrag.pointerId) return; state = JSON.parse(stageDrag.before); stageDrag = null; render();
 });
 $('exportBtn').addEventListener('click', showExport); $('startExportBtn').addEventListener('click', exportVideo);
 document.querySelectorAll('.close-dialog').forEach(button => button.addEventListener('click', () => {
@@ -878,11 +912,11 @@ document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); history(e.shiftKey ? 'redo' : 'undo'); }
   else if (e.code === 'Space') { e.preventDefault(); $('playBtn').click(); }
   else if (e.key === 'Delete' && selected) $('removeBtn').click();
-  else if (selected?.type === 'title' && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) {
-    e.preventDefault(); const title = selectedItem(), step = e.shiftKey ? 5 : 1;
-    change(() => { if (e.key === 'ArrowLeft') title.x = clamp(title.x - step, 0, 100); if (e.key === 'ArrowRight') title.x = clamp(title.x + step, 0, 100); if (e.key === 'ArrowUp') title.y = clamp(title.y - step, 0, 100); if (e.key === 'ArrowDown') title.y = clamp(title.y + step, 0, 100); title.position = 'custom'; });
+  else if (['title','clip'].includes(selected?.type) && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) {
+    e.preventDefault(); const item = selectedItem(), step = e.shiftKey ? 5 : 1, low = selected.type === 'clip' ? -100 : 0, high = selected.type === 'clip' ? 200 : 100;
+    change(() => { if (e.key === 'ArrowLeft') item.x = clamp(item.x - step, low, high); if (e.key === 'ArrowRight') item.x = clamp(item.x + step, low, high); if (e.key === 'ArrowUp') item.y = clamp(item.y - step, low, high); if (e.key === 'ArrowDown') item.y = clamp(item.y + step, low, high); if (selected.type === 'title') item.position = 'custom'; });
   }
   else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); stopPlayback(); seek(currentTime + (e.key === 'ArrowRight' ? 1/30 : -1/30)); }
 });
-window.addEventListener('resize', () => { renderTimeline(); updateTitleSelection(); }); window.addEventListener('beforeunload', e => { if (dirty || mediaBusy || recording || exportPreparing) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('resize', () => { renderTimeline(); updateStageSelection(); }); window.addEventListener('beforeunload', e => { if (dirty || mediaBusy || recording || exportPreparing) { e.preventDefault(); e.returnValue = ''; } });
 render();

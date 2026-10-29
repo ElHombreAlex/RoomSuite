@@ -12,6 +12,16 @@
   const active = (clip, time) => time >= clip.start && time < end(clip);
   const order = (a, b) => a.start - b.start || (a.transitionFrom === b.id ? 1 : b.transitionFrom === a.id ? -1 : 0);
   const sourceAt = (clip, time) => clip.in + limit(time - clip.start, 0, length(clip)) * rate(clip);
+  function normalizeRotation(value) {
+    const degrees = Number(value);
+    return Number.isFinite(degrees) ? ((degrees + 180) % 360 + 360) % 360 - 180 : 0;
+  }
+  function insideRotatedBox(x, y, box, degrees) {
+    const angle = normalizeRotation(degrees) * Math.PI / 180, dx = x - box.centerX, dy = y - box.centerY;
+    const localX = dx * Math.cos(angle) + dy * Math.sin(angle);
+    const localY = -dx * Math.sin(angle) + dy * Math.cos(angle);
+    return Math.abs(localX) <= box.width / 2 && Math.abs(localY) <= box.height / 2;
+  }
   function rateForDuration(clip, duration) {
     const requested = (clip.out - clip.in) / duration;
     return Number.isFinite(requested) && requested >= MIN_RATE && requested <= MAX_RATE ? requested : null;
@@ -34,7 +44,7 @@
   const audioDefaults = clip => ({ rate:1, ...clip });
   function titleDefaults(title) {
     const y = title.position === 'top' ? 18 : title.position === 'bottom' ? 82 : 50;
-    return { x:50, y, width:84, font:'sans-serif', bold:true, italic:false, ...title };
+    return { x:50, y, width:84, rotation:0, font:'sans-serif', bold:true, italic:false, ...title };
   }
 
   function empty(id) {
@@ -114,5 +124,5 @@
     for (const later of clips) if (later.transitionFrom === clip.id) later.transitionFrom = next.id;
     clips.push(next); return next;
   }
-  return { MIN_RATE, MAX_RATE, rate, rateForDuration, sourceAt, createAudioClickGesture, empty, migrate, length, end, active, order, duration, envelope, visualOpacity, dissolve, split };
+  return { MIN_RATE, MAX_RATE, rate, rateForDuration, sourceAt, normalizeRotation, insideRotatedBox, createAudioClickGesture, empty, migrate, length, end, active, order, duration, envelope, visualOpacity, dissolve, split };
 });

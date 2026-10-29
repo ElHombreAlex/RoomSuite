@@ -70,6 +70,7 @@ test('version 2 projects open with their old timing and title placement', () => 
   assert.equal(migrated.version, 3);
   assert.equal(timeline.length(migrated.clips[0]), 4);
   assert.deepEqual([migrated.titles[0].x, migrated.titles[0].y], [50, 82]);
+  assert.equal(migrated.titles[0].rotation, 0);
   assert.equal(project.clips[0].rate, undefined);
 });
 
@@ -115,4 +116,15 @@ test('audio clicks cut once, while a double click opens options without cutting'
   gesture.cancel();
   assert.equal(timers.size, 0);
   assert.deepEqual(actions, [['cut', 'a', 1], ['options', 'a', 2.01]]);
+});
+
+test('rotation normalizes angles and hit testing follows a rotated rectangle', () => {
+  const box = { centerX:100, centerY:50, width:80, height:20 };
+  assert.equal(timeline.normalizeRotation(450), 90);
+  assert.equal(timeline.normalizeRotation(-181), 179);
+  assert.equal(timeline.insideRotatedBox(135, 50, box, 0), true);
+  assert.equal(timeline.insideRotatedBox(135, 50, box, 90), false);
+  assert.equal(timeline.insideRotatedBox(100, 85, box, 90), true);
+  assert.equal(timeline.insideRotatedBox(120, 70, box, 45), true);
+  assert.equal(timeline.insideRotatedBox(120, 30, box, 45), false);
 });

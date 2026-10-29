@@ -1,6 +1,6 @@
 {
   "name": "cliproom",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "private": true,
   "description": "A small self-hosted video editor and shared project library",
   "scripts": {
