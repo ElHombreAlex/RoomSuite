@@ -11,8 +11,8 @@ PixelRoom is a static website: no Node.js, database, build step, API key, or net
 On the Linux server, clone the repository using an account authorized to access it, then start a temporary server:
 
 ```sh
-git clone https://github.com/ElHombreAlex/PixelSuite.git
-cd PixelSuite/PixelRoom
+git clone https://github.com/ElHombreAlex/RoomSuite.git
+cd RoomSuite/PixelRoom
 python3 -m http.server 8080 --bind 0.0.0.0 --directory dist
 ```
 
@@ -20,7 +20,7 @@ Visit `http://SERVER_IP:8080/` from a device that can reach the server. Replace 
 
 ### Serve with Nginx
 
-For an ongoing installation, the following example uses Nginx on port `8080`. On Debian or Ubuntu, install it with `sudo apt install nginx git`, then clone the repository as shown above. From inside `PixelSuite/PixelRoom`:
+For an ongoing installation, the following example uses Nginx on port `8080`. On Debian or Ubuntu, install it with `sudo apt install nginx git`, then clone the repository as shown above. From inside `RoomSuite/PixelRoom`:
 
 ```sh
 sudo mkdir -p /srv/pixelsuite/PixelRoom
@@ -79,4 +79,3 @@ Subject detection, recognition, masks, and background reconstruction are approxi
 `dist/vendor/ocr` contains Tesseract.js 7 and Tesseract.js-core 7 (Apache 2.0; license included) and an English trained-data package. The engine and model are used locally and are not sent to an OCR service.
 
 `dist/vendor/vision` contains ONNX Runtime Web, the U²-Net portable subject model, and a quantized LaMa inpainting model. Their licenses, attribution, source links, and checksums are included in that directory. The LaMa model is split across four local files; keep all four.
-

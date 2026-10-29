@@ -1,0 +1,11 @@
+{
+  "name": "roomsuite",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A self-hosted collection of browser creative tools",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test cliproom/tests/*.test.js tests/*.test.js"
+  },
+  "engines": { "node": ">=18" }
+}

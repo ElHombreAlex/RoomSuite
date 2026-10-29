@@ -70,7 +70,7 @@ function change(fn) {
   const before = JSON.stringify(state);
   fn(); commitPrevious(before);
 }
-function history(direction) {
+function applyHistory(direction) {
   if (recording || exportPreparing) return;
   cancelAudioClick();
   const from = direction === 'undo' ? undoStack : redoStack, to = direction === 'undo' ? redoStack : undoStack;
@@ -718,7 +718,7 @@ document.addEventListener('pointerdown', event => {
 $('importBtn').addEventListener('click', () => $('fileInput').click()); $('emptyImportBtn').addEventListener('click', () => $('fileInput').click());
 $('fileInput').addEventListener('change', e => importFiles([...e.target.files]));
 $('projectName').addEventListener('change', e => { const name = e.target.value.trim() || 'Untitled story'; change(() => { state.name = name; }); });
-$('undoBtn').addEventListener('click', () => history('undo')); $('redoBtn').addEventListener('click', () => history('redo'));
+$('undoBtn').addEventListener('click', () => applyHistory('undo')); $('redoBtn').addEventListener('click', () => applyHistory('redo'));
 $('saveBtn').addEventListener('click', () => saveProject()); $('openBtn').addEventListener('click', showProjects);
 $('saveCopyBtn').addEventListener('click', () => saveProject(true));
 $('newProjectBtn').addEventListener('click', () => { if (dirty && !confirm('You have unsaved changes. Start a new project anyway?')) return; setState(emptyState(), uid(), 0); $('projectsDialog').close(); });
@@ -909,7 +909,7 @@ $('exportDialog').addEventListener('cancel', e => { if (recording || exportPrepa
 document.addEventListener('visibilitychange', () => { if (document.hidden && (recording || exportPreparing)) { cancelRecording = true; if (exportPreparing) { exportGeneration++; exportPreparing = false; $('startExportBtn').disabled = false; } stopPlayback(); if (recorder && recorder.state !== 'inactive') recorder.stop(); notify('Export stopped because the tab was hidden. Keep it visible while exporting.', 7000); } });
 document.addEventListener('keydown', e => {
   if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || document.querySelector('dialog[open]')) return;
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); history(e.shiftKey ? 'redo' : 'undo'); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); applyHistory(e.shiftKey ? 'redo' : 'undo'); }
   else if (e.code === 'Space') { e.preventDefault(); $('playBtn').click(); }
   else if (e.key === 'Delete' && selected) $('removeBtn').click();
   else if (['title','clip'].includes(selected?.type) && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) {
@@ -920,3 +920,46 @@ document.addEventListener('keydown', e => {
 });
 window.addEventListener('resize', () => { renderTimeline(); updateStageSelection(); }); window.addEventListener('beforeunload', e => { if (dirty || mediaBusy || recording || exportPreparing) { e.preventDefault(); e.returnValue = ''; } });
 render();
+
+// A room may explicitly upload media and open a new Cliproom tab with its ID.
+// The asset remains in the normal Cliproom library; other open tabs are untouched.
+async function importRoomHandoff() {
+  const params = new URLSearchParams(location.search);
+  const id = params.get('asset');
+  if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) return;
+  const suppliedDuration = Number(params.get('duration'));
+  window.history.replaceState(null, '', location.pathname);
+  mediaBusy = true; $('importBtn').disabled = true; $('emptyImportBtn').disabled = true;
+  try {
+    notify('Opening media from your other room…', 30000);
+    const uploaded = await request('/api/assets/' + id + '/metadata');
+    const kind = uploaded.type.startsWith('audio/') ? 'audio' : uploaded.type.startsWith('video/') ? 'video' : uploaded.type.startsWith('image/') ? 'image' : null;
+    if (!kind) throw new Error('This media type is not supported.');
+    let info;
+    if (kind === 'image') {
+      const image = new Image();
+      await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error('The image could not be opened.')); image.src = '/api/assets/' + id; });
+      info = { duration: 5, width: image.naturalWidth, height: image.naturalHeight };
+    } else {
+      const media = document.createElement(kind);
+      media.preload = 'metadata';
+      info = await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Reading this media timed out.')), 20000);
+        media.onloadedmetadata = () => {
+          clearTimeout(timer);
+          const duration = Number.isFinite(media.duration) && media.duration > 0 ? media.duration : suppliedDuration;
+          if (!Number.isFinite(duration) || duration <= 0 || duration > 86400) reject(new Error('The media duration could not be read.'));
+          else resolve({ duration, width: media.videoWidth || 0, height: media.videoHeight || 0 });
+        };
+        media.onerror = () => { clearTimeout(timer); reject(new Error('Your browser cannot decode this recording.')); };
+        media.src = '/api/assets/' + id;
+      });
+      media.removeAttribute('src'); media.load();
+    }
+    change(() => { state.assets.push({ ...uploaded, ...info, kind }); });
+    addMedia(uploaded.id);
+    notify(uploaded.name + ' added to the timeline.');
+  } catch (error) { notify('Could not open the media: ' + error.message, 8000); }
+  finally { mediaBusy = false; $('importBtn').disabled = false; $('emptyImportBtn').disabled = false; }
+}
+importRoomHandoff();

@@ -16,11 +16,15 @@ const ALLOWED_HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`, ...(POR
 const PROJECTS = path.join(DATA, 'projects');
 const ASSETS = path.join(DATA, 'assets');
 const PUBLIC = path.join(__dirname, 'public');
+const SUITE_MODE = process.env.ROOMSUITE_MODE === '1';
+const SUITE_ROOT = path.resolve(__dirname, '..');
 const MAX_MEDIA = 2 * 1024 * 1024 * 1024;
 const MAX_PROJECT = 2 * 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const mediaTypes = new Set(['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-m4v', 'video/mpeg', 'audio/mpeg', 'audio/mp4', 'audio/x-m4a', 'audio/ogg', 'audio/wav', 'audio/wave', 'audio/x-wav', 'audio/webm', 'audio/aac', 'audio/flac', 'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif']);
 const publicFiles = { '/': ['index.html', 'text/html; charset=utf-8'], '/index.html': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/timeline.js': ['timeline.js', 'text/javascript; charset=utf-8'], '/styles.css': ['styles.css', 'text/css; charset=utf-8'] };
+const suiteRoots = { '/suite/': 'suite', '/soundroom/': 'SoundRoom', '/captureroom/': 'CaptureRoom', '/vectorroom/': 'VectorRoom', '/pixelroom/': 'PixelRoom/dist' };
+const suiteTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.onnx': 'application/octet-stream', '.bin': 'application/octet-stream', '.gz': 'application/gzip', '.txt': 'text/plain; charset=utf-8', '.woff': 'font/woff', '.woff2': 'font/woff2' };
 const locks = new Map();
 
 function headers(res) {
@@ -93,6 +97,28 @@ async function route(req, res) {
   if (!ALLOWED_HOSTS.has(String(req.headers.host || '').toLowerCase())) throw error(403, 'This host is not allowed. Configure CLIPROOM_ALLOWED_HOSTS for your Tailscale URL.');
   const url = new URL(req.url, 'http://localhost');
   const pathname = url.pathname;
+  if (SUITE_MODE && (req.method === 'GET' || req.method === 'HEAD')) {
+    if (['/cliproom', '/soundroom', '/captureroom', '/vectorroom', '/pixelroom'].includes(pathname)) {
+      res.writeHead(308, { Location: pathname + '/' }); return res.end();
+    }
+    if (pathname === '/' || pathname === '/index.html') {
+      return sendFile(req, res, path.join(SUITE_ROOT, 'suite', 'index.html'), suiteTypes['.html']);
+    }
+    if (pathname === '/cliproom/') return sendFile(req, res, path.join(PUBLIC, 'index.html'), suiteTypes['.html']);
+    for (const [prefix, root] of Object.entries(suiteRoots)) {
+      if (!pathname.startsWith(prefix)) continue;
+      let relative;
+      try { relative = decodeURIComponent(pathname.slice(prefix.length)) || 'index.html'; } catch { throw error(400, 'Invalid path.'); }
+      const directory = path.resolve(SUITE_ROOT, root);
+      const file = path.resolve(directory, relative);
+      const within = path.relative(directory, file);
+      if (!within || within.startsWith('..') || path.isAbsolute(within)) throw error(404, 'Not found.');
+      const type = suiteTypes[path.extname(file).toLowerCase()];
+      if (!type) throw error(404, 'Not found.');
+      res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' blob: data:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+      return sendFile(req, res, file, type);
+    }
+  }
   if (req.method === 'GET' && pathname === '/api/health') return json(res, 200, { ok: true });
   if ((req.method === 'GET' || req.method === 'HEAD') && publicFiles[pathname]) {
     const [file, type] = publicFiles[pathname]; return sendFile(req, res, path.join(PUBLIC, file), type);
@@ -127,6 +153,12 @@ async function route(req, res) {
     if (!mediaTypes.has(meta.type)) throw error(404, 'Media not found.');
     return sendFile(req, res, path.join(ASSETS, match[1]), meta.type, true);
   }
+  match = /^\/api\/assets\/([0-9a-f-]+)\/metadata$/.exec(pathname);
+  if (match && UUID.test(match[1]) && req.method === 'GET') {
+    const meta = JSON.parse(await fsp.readFile(path.join(ASSETS, match[1] + '.json'), 'utf8'));
+    if (!mediaTypes.has(meta.type)) throw error(404, 'Media not found.');
+    return json(res, 200, meta);
+  }
   match = /^\/api\/projects\/([0-9a-f-]+)$/.exec(pathname);
   if (match && UUID.test(match[1])) {
     const id = match[1];
@@ -157,7 +189,7 @@ async function start() {
     if (!e.status) console.error('Request failed:', e.message);
     return json(res, e.status || 500, { error: e.status ? e.message : 'The server could not complete the request.' });
   }));
-  server.listen(PORT, '127.0.0.1', () => console.log(`Cliproom is running at http://127.0.0.1:${PORT}`));
+  server.listen(PORT, '127.0.0.1', () => console.log(`${SUITE_MODE ? 'RoomSuite' : 'Cliproom'} is running at http://127.0.0.1:${PORT}`));
   return server;
 }
 if (require.main === module) start().catch(e => { console.error(e); process.exitCode = 1; });
