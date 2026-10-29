@@ -1,0 +1,9 @@
+Bundled offline OCR components
+
+Tesseract.js 7.0.0 and Tesseract.js-core 7.0.0: Apache License 2.0.
+The Apache License is included in this directory as LICENSE. The minified
+bundle notices are provided in the corresponding .LICENSE.txt files.
+
+English trained data: @tesseract.js-data/eng 1.0.0 (package metadata lists MIT);
+the model is distributed for use with the open-source Tesseract project.
+No OCR resource is fetched from a third-party server by this application.

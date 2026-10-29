@@ -1,0 +1,19 @@
+Offline vision components
+
+ONNX Runtime Web 1.31.1, Microsoft, MIT License (ONNXRUNTIME-LICENSE).
+
+U²-Net portable (u2netp.onnx), Apache License 2.0. Original paper: Xuebin
+Qin et al., "U²-Net: Going Deeper with Nested U-Structure for Salient Object
+Detection", Pattern Recognition 106 (2020). Model mirror:
+https://huggingface.co/edgetools/u2netp
+SHA-256: 309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8
+
+LaMa quantized 512-pixel ONNX export, Apache License 2.0. Original paper:
+Suvorov et al., "Resolution-robust Large Mask Inpainting with Fourier
+Convolutions", WACV 2022. Model export:
+https://huggingface.co/g-ronimo/lama
+The four lama.part*.bin files concatenate, in numerical order, to the model.
+Combined SHA-256: cab19978adc306622fe37ef60d4a52103b99c98141d499c2a2366a7ed1255dbe
+
+The model files are bundled and served from the same host as the editor;
+these links are attribution only and are not contacted by the application.

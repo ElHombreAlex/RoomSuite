@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f7f7f5">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'self'">
+  <meta name="description" content="A private, browser-based image editor.">
+  <title>Pixelroom — your little creative space</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <svg class="svg-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2.7 14.3 9l6.4 2.4-6.4 2.3-2.3 6.4-2.3-6.4-6.4-2.3L9.7 9 12 2.7Z"/><path d="m18.5 3.2.8 2.2 2.1.8-2.1.8-.8 2.2-.8-2.2-2.1-.8 2.1-.8.8-2.2Z"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h8M16 18h4"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="14" cy="18" r="2"/></symbol>
+    <symbol id="i-crop" viewBox="0 0 24 24"><path d="M6 3v12a3 3 0 0 0 3 3h12M3 6h12a3 3 0 0 1 3 3v12"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24"><path d="M4 6V4h16v2M12 4v16M8 20h8"/></symbol>
+    <symbol id="i-shapes" viewBox="0 0 24 24"><rect x="3" y="3" width="9" height="9" rx="2"/><circle cx="16.5" cy="16.5" r="4.5"/><path d="m16 4 4 7h-4"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V3m-4 4 4-4 4 4M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="m8 7-4 4 4 4M4 11h10a6 6 0 0 1 6 6"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="m16 7 4 4-4 4M20 11H10a6 6 0 0 0-6 6"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.7"/></symbol>
+    <symbol id="i-eyeoff" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 6.1A11 11 0 0 1 12 6c6 0 9.5 6 9.5 6a13 13 0 0 1-3 3.5M6 7.9A14 14 0 0 0 2.5 12s3.5 6 9.5 6a10 10 0 0 0 4-.8"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m5 5 14 14M19 5 5 19"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m4 18 5-5 3 3 3-4 5 6"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 1 1 8 0v3"/></symbol>
+    <symbol id="i-move" viewBox="0 0 24 24"><path d="M12 2v20M2 12h20M9 5l3-3 3 3M9 19l3 3 3-3M5 9l-3 3 3 3M19 9l3 3-3 3"/></symbol>
+  </defs></svg>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark"><span></span><span></span><span></span><span></span></span><span>pixelroom<span class="brand-dot">.</span></span></div>
+    <div class="document-name"><input id="projectName" aria-label="Project name" value="A little escape" maxlength="60"><span class="doc-subtitle"><span class="status-dot"></span> YOUR CREATIVE SPACE</span></div>
+    <div class="header-actions">
+      <div class="history-actions"><button class="icon-button" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo"><svg><use href="#i-undo"/></svg></button><button class="icon-button" id="redoBtn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><svg><use href="#i-redo"/></svg></button></div>
+      <button class="button button-quiet desktop-only" id="saveProjectBtn">Save project</button>
+      <button class="button button-dark" id="exportBtn"><svg><use href="#i-download"/></svg><span>Export</span></button>
+    </div>
+  </header>
+  <main class="app-shell">
+    <nav class="rail" aria-label="Editor tools">
+      <button class="rail-button active" data-tab="edit"><svg><use href="#i-edit"/></svg><span>Edit</span></button>
+      <button class="rail-button" data-tab="crop"><svg><use href="#i-crop"/></svg><span>Crop</span></button>
+      <button class="rail-button" data-tab="text"><svg><use href="#i-text"/></svg><span>Text</span></button>
+      <button class="rail-button" data-tab="shapes"><svg><use href="#i-shapes"/></svg><span>Shapes</span></button>
+      <button class="rail-button" data-tab="isolate"><svg><use href="#i-spark"/></svg><span>Isolate</span></button>
+      <span class="rail-spacer"></span><div class="rail-foot" title="Your images stay on this device"><svg><use href="#i-lock"/></svg></div>
+    </nav>
+    <aside class="tool-panel" id="toolPanel" aria-label="Tool settings">
+      <div class="panel-head"><div><div class="eyebrow">THE TOOLBOX</div><h1 id="panelTitle">Make it yours<span class="heading-dot">.</span></h1></div><span class="panel-spark">✳</span></div>
+      <section class="tool-section" data-panel="edit">
+        <p class="section-intro">A little space to make something good.</p>
+        <button class="upload-card" id="openImageBtn"><span class="upload-icon"><svg><use href="#i-upload"/></svg></span><strong>Bring in a photo</strong><small>Click to upload or drop it here</small><span class="upload-pill">Browse files</span></button>
+        <div class="section-label"><span>QUICK TOOLS</span><span>✦</span></div>
+        <div class="quick-grid"><button class="quick-tool" data-go="crop"><span class="quick-icon peach"><svg><use href="#i-crop"/></svg></span><span>Crop</span><svg class="arrow"><use href="#i-chevron"/></svg></button><button class="quick-tool" data-go="isolate"><span class="quick-icon lavender"><svg><use href="#i-spark"/></svg></span><span>Isolate</span><svg class="arrow"><use href="#i-chevron"/></svg></button></div>
+        <div class="section-label adjust-label"><span>IMAGE ADJUSTMENTS</span><button id="resetAdjustBtn" class="text-button">Reset</button></div>
+        <p class="mini-hint" id="adjustHint">Select an image layer to adjust it.</p>
+        <div id="adjustControls" class="adjust-controls">
+          <label class="slider-label"><span>Brightness</span><output id="brightnessValue">0</output><input type="range" id="brightness" min="-100" max="100" value="0"></label>
+          <label class="slider-label"><span>Contrast</span><output id="contrastValue">0</output><input type="range" id="contrast" min="-100" max="100" value="0"></label>
+          <label class="slider-label"><span>Saturation</span><output id="saturationValue">0</output><input type="range" id="saturation" min="-100" max="100" value="0"></label>
+        </div>
+        <div class="panel-bottom-note"><svg><use href="#i-lock"/></svg><span>Made for your eyes only.<br><strong>Your images stay on this device.</strong></span></div>
+      </section>
+      <section class="tool-section hidden" data-panel="crop"><p class="section-intro">Frame it just the way you like.</p><div class="instruction-card"><span>01</span><div><strong>Draw your crop</strong><p>Drag over the canvas to choose the area you want to keep.</p></div></div><button class="button button-wide button-dark" id="startCropBtn"><svg><use href="#i-crop"/></svg> Draw crop</button><div id="cropActions" class="hidden action-stack"><button class="button button-wide button-accent" id="applyCropBtn">Apply crop</button><button class="button button-wide button-outline" id="cancelCropBtn">Cancel</button></div><p class="mini-hint">Cropping changes the canvas, not the original files.</p></section>
+      <section class="tool-section hidden" data-panel="text"><p class="section-intro">Say a little something.</p><button class="button button-wide button-dark" id="addTextBtn"><svg><use href="#i-plus"/></svg> Add a text layer</button><div class="type-presets"><button data-text-preset="heading"><strong>Add a heading</strong><span>Big and beautiful</span></button><button data-text-preset="body"><strong>Add a little note</strong><span>Perfect for the details</span></button></div><div class="section-label"><span>YOUR FONTS</span></div><button class="button button-wide button-outline" id="importFontBtn"><svg><use href="#i-upload"/></svg> Import a font</button><p class="mini-hint">Use a local TTF, OTF, WOFF or WOFF2 file. Fonts are saved with your project.</p></section>
+      <section class="tool-section hidden" data-panel="shapes"><p class="section-intro">The finishing touches.</p><div class="shape-options"><button data-shape="rect"><span class="shape-swatch square"></span><strong>Rectangle</strong></button><button data-shape="circle"><span class="shape-swatch circle"></span><strong>Ellipse</strong></button><button data-shape="polygon"><span class="shape-swatch polygon"></span><strong>Polygon</strong></button><button data-shape="star"><span class="shape-swatch star">★</span><strong>Star</strong></button><button data-shape="line"><span class="shape-swatch line"></span><strong>Line</strong></button></div><p class="mini-hint">Select a shape to change its corners, angle, outline, and more in Layers.</p></section>
+      <section class="tool-section hidden" data-panel="isolate">
+        <p class="section-intro">Make room for the details.</p>
+        <div id="isolateStart"><div class="feature-card"><div class="feature-icon"><svg><use href="#i-spark"/></svg></div><strong>Find text</strong><p>Find editable text layers and text in the selected image.</p><button class="button button-wide button-dark" id="findTextBtn">Find text areas</button></div>
+          <div id="detectActions" class="hidden"><p class="mini-hint" id="detectHint" role="status">Choose a highlighted area on the canvas, or draw your own.</p><div id="detectedList" class="detected-list" aria-label="Detected text areas"></div><button class="button button-wide button-outline hidden" id="scanImageBtn">Also scan image pixels</button><button class="button button-wide button-outline" id="drawTextSelectionBtn">Draw a selection</button><button class="button button-wide button-accent" id="isolateTextBtn" disabled>Isolate selected area</button></div>
+          <div class="section-label"><span>BACKGROUND CUTOUT</span></div><button class="quick-wide" id="removeBgBtn"><span class="quick-icon lavender"><svg><use href="#i-spark"/></svg></span><span><strong>Remove background</strong><small>Select and refine before applying</small></span><svg class="arrow"><use href="#i-chevron"/></svg></button>
+        </div>
+        <div id="maskControls" class="hidden"><div class="feature-card mask-card"><strong id="maskTitle">Refine selection</strong><p id="maskHint" role="status"></p></div><div id="maskEditControls"><div id="subjectControls" class="hidden"><button class="button button-wide button-outline" id="findSubjectBtn">Find subject again</button><button class="button button-wide button-outline" id="colorOnlyBtn">Start with background color</button><label class="slider-label mask-slider"><span>Subject edge</span><output id="subjectThresholdValue">50</output><input id="subjectThreshold" type="range" min="15" max="85" value="50"></label></div><div class="mask-tools" role="group" aria-label="Selection tools"><button class="active" data-mask-tool="pick" id="maskPickBtn">Smart select</button><button data-mask-tool="add" id="maskAddBtn">Remove brush</button><button data-mask-tool="subtract" id="maskSubtractBtn">Keep brush</button></div><label class="slider-label mask-slider"><span id="maskToleranceLabel">Sensitivity</span><output id="maskToleranceValue">38</output><input id="maskTolerance" type="range" min="5" max="130" value="38"></label><label class="slider-label mask-slider"><span>Brush size</span><output id="maskBrushValue">32</output><input id="maskBrush" type="range" min="4" max="120" value="32"></label><button id="viewLettersBtn" class="button button-wide button-outline hidden mask-view-button">Show letters only</button><label id="inpaintLabel" class="check-label hidden"><input type="checkbox" id="inpaintOriginal" checked> Rebuild the background behind the letters</label><p id="maskDetail" class="mini-hint"></p></div><div class="action-stack"><button class="button button-wide button-accent" id="applyMaskBtn">Apply cutout</button><button class="button button-wide button-outline hidden" id="backToMaskBtn">Back to selection</button><button class="button button-wide button-outline" id="clearMaskBtn">Clear selection</button><button class="button button-wide button-outline" id="cancelMaskBtn">Cancel</button></div></div>
+      </section>
+      <div class="tool-footer"><button id="openProjectBtn" class="text-button">Open project</button><span>·</span><button id="saveProjectSideBtn" class="text-button">Save project</button></div>
+    </aside>
+    <section class="work-area" id="workArea" aria-label="Canvas workspace">
+      <div class="workspace-top"><div><span class="workspace-title">Your canvas</span><span class="workspace-divider"></span><span class="workspace-size" id="canvasSize">1200 × 800 px</span></div><div class="local-badge"><span></span> PRIVATE BY DESIGN</div></div>
+      <div class="canvas-stage" id="canvasStage"><div class="canvas-wrap" id="canvasWrap"><canvas id="editorCanvas" width="1200" height="800" aria-label="Image editing canvas"></canvas></div></div>
+      <div class="workspace-bottom"><span class="canvas-tip"><span>✦</span> Select a layer and make it yours</span><div class="zoom-controls"><button id="zoomOutBtn" aria-label="Zoom out">−</button><span id="zoomLabel">Fit</span><button id="zoomInBtn" aria-label="Zoom in">+</button><button id="zoomFitBtn" title="Fit canvas" aria-label="Fit canvas">⛶</button></div></div>
+    </section>
+    <aside class="inspector" id="inspector" aria-label="Layers and properties">
+      <div class="inspector-heading"><div><div class="eyebrow">THE DETAILS</div><h2>Layers<span class="heading-dot">.</span></h2></div><button class="icon-button" id="addImageBtn" title="Add image layer" aria-label="Add image layer"><svg><use href="#i-plus"/></svg></button></div>
+      <p class="inspector-intro">Everything in its right place.</p>
+      <div id="layersList" class="layers-list"></div>
+      <div class="layer-actions"><button id="layerUpBtn" title="Move layer up" aria-label="Move layer up">↑</button><button id="layerDownBtn" title="Move layer down" aria-label="Move layer down">↓</button><span></span><button id="duplicateBtn" title="Duplicate layer" aria-label="Duplicate layer"><svg><use href="#i-copy"/></svg></button><button id="deleteBtn" title="Delete layer" aria-label="Delete layer"><svg><use href="#i-trash"/></svg></button></div>
+      <div class="inspector-rule"></div>
+      <div class="properties-heading"><div><div class="eyebrow">SELECTED LAYER</div><h3 id="selectedTitle">Layer properties</h3></div><span class="tiny-spark">✳</span></div>
+      <div id="properties" class="properties"></div>
+      <p id="emptyProperties" class="mini-hint hidden">Select a layer to see its settings.</p>
+    </aside>
+  </main>
+  <nav class="mobile-nav" aria-label="Mobile editor tools"><button class="active" data-mobile="edit"><svg><use href="#i-edit"/></svg><span>Edit</span></button><button data-mobile="crop"><svg><use href="#i-crop"/></svg><span>Crop</span></button><button data-mobile="text"><svg><use href="#i-text"/></svg><span>Text</span></button><button data-mobile="shapes"><svg><use href="#i-shapes"/></svg><span>Shapes</span></button><button data-mobile="isolate"><svg><use href="#i-spark"/></svg><span>Isolate</span></button><button data-mobile="layers"><svg><use href="#i-layers"/></svg><span>Layers</span></button></nav>
+  <input type="file" id="imageInput" accept="image/*" hidden><input type="file" id="projectInput" accept=".pixelroom,.json,application/json" hidden><input type="file" id="fontInput" accept=".ttf,.otf,.woff,.woff2,font/*" hidden>
+  <dialog id="exportDialog" class="dialog"><form method="dialog" id="exportForm"><div class="dialog-top"><div><div class="eyebrow">READY WHEN YOU ARE</div><h2>Take it with you<span class="heading-dot">.</span></h2></div><button class="icon-button" value="cancel" aria-label="Close"><svg><use href="#i-close"/></svg></button></div><p>Save your finished image to your device.</p><label class="field-label">File name<input id="exportName" value="a-little-escape" maxlength="80"></label><label class="field-label">File type<select id="exportFormat"><option value="image/png">PNG · best quality & transparency</option><option value="image/jpeg">JPEG · smaller photo file</option><option value="image/webp">WebP · great for the web</option></select></label><label class="field-label" id="qualityLabel">Quality <span id="qualityValue">92%</span><input type="range" id="exportQuality" min="30" max="100" value="92"></label><div class="export-note">✦ &nbsp; Your image is created right here, on your device.</div><button class="button button-wide button-dark" type="button" id="downloadBtn"><svg><use href="#i-download"/></svg> Download image</button></form></dialog>
+  <dialog id="textConversionDialog" class="dialog"><form id="textConversionForm"><div class="dialog-top"><div><div class="eyebrow">MAKE IT EDITABLE</div><h2>Make the words yours<span class="heading-dot">.</span></h2></div><button class="icon-button" type="button" id="closeTextConversion" aria-label="Close"><svg><use href="#i-close"/></svg></button></div><p>Keep the original letter shapes and review the words. You can change the style again in Layers.</p><label class="field-label">Your text<textarea id="conversionText" maxlength="2000" placeholder="Type the words here"></textarea></label><div class="conversion-status"><span id="conversionStatus" role="status" aria-live="polite">Reading the selected letters on this device…</span><button type="button" id="readTextAgain" class="text-button">Read again</button></div><div class="field-row"><label class="field-label">Starting font<select id="conversionFont"></select></label><label class="field-label">Text color<span class="color-wrap"><input type="color" id="conversionColor" value="#ffffff"><span id="conversionColorValue">#ffffff</span></span></label></div><div class="export-note">Original lettering keeps the selected shapes. New characters use a local substitute unless you import the original font.</div><button class="button button-wide button-dark" type="submit" id="createEditableTextBtn" disabled>Create editable text</button></form></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="./vendor/ocr/tesseract.min.js" defer></script><script src="./vendor/vision/ort.wasm.min.js" defer></script><script src="./vision.js" defer></script><script src="./app.js" defer></script>
+</body>
+</html>
