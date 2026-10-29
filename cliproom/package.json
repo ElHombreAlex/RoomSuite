@@ -1,0 +1,11 @@
+{
+  "name": "cliproom",
+  "version": "3.1.0",
+  "private": true,
+  "description": "A small self-hosted video editor and shared project library",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "engines": { "node": ">=18" }
+}

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f7f5">
+  <title>Cliproom — your story, in motion</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script defer src="/timeline.js"></script>
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <svg class="svg-defs" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4m-4 4 4-4 4 4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6h7l2 2h9v11H3z"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24"><path d="M4 4h14l2 2v14H4zM8 4v6h8V4M8 20v-7h8v7"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="m8 8 11 11M8 16 19 5"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5m4-5v5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><path d="M8 8h12v12H8zM16 8V4H4v12h4"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="m8 7-4 4 4 4M4 11h10a5 5 0 0 1 0 10"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="m16 7 4 4-4 4M20 11H10a5 5 0 0 0 0 10"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v12m-4-4 4 4 4-4M4 17v3h16v-3"/></symbol>
+    <symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16M16 4v16M3 9h5m8 0h5M3 15h5m8 0h5"/></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24"><path d="M4 6h16M12 6v13M8 19h8"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 2 6 6 2-6 2-2 6-2-6-6-2 6-2 2-6ZM19 16l.7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7z"/></symbol>
+  </svg>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span>cliproom<span class="purple">.</span></span></div>
+    <div class="document-name"><label for="projectName">YOUR PROJECT</label><input id="projectName" value="Untitled story" maxlength="160" aria-label="Project name"></div>
+    <div class="header-actions">
+      <div class="history-actions"><button class="icon-button" id="undoBtn" title="Undo" aria-label="Undo"><svg><use href="#i-undo"/></svg></button><button class="icon-button" id="redoBtn" title="Redo" aria-label="Redo"><svg><use href="#i-redo"/></svg></button></div>
+      <button class="button button-outline" id="openBtn"><svg><use href="#i-folder"/></svg><span>Open</span></button>
+      <button class="button button-outline" id="saveBtn"><svg><use href="#i-save"/></svg><span>Save</span></button>
+      <button class="button button-accent" id="exportBtn"><svg><use href="#i-download"/></svg><span>Export</span></button>
+    </div>
+  </header>
+  <main class="workspace">
+    <aside class="library">
+      <div class="panel-heading"><div><p class="eyebrow">YOUR CREATIVE SPACE</p><h1>Media<span class="purple">.</span></h1></div><span class="spark">✳</span></div>
+      <p class="intro">A little space for the pieces of your story.</p>
+      <button class="upload-card" id="importBtn">
+        <span class="upload-icon"><svg><use href="#i-upload"/></svg></span>
+        <strong>Bring in your media</strong><small>Video, photos &amp; audio</small><span class="upload-pill">Choose files</span>
+      </button>
+      <input id="fileInput" type="file" accept="video/*,audio/*,image/png,image/jpeg,image/webp,image/gif,image/avif" multiple hidden>
+      <div class="library-targets"><label>ADD VIDEO TO<select id="videoTarget" aria-label="Track for new video"></select></label><label>ADD AUDIO TO<select id="audioTarget" aria-label="Track for new audio"></select></label></div>
+      <div class="section-label"><span>YOUR LIBRARY</span><span id="assetCount">0</span></div>
+      <div id="mediaList" class="media-list"><div class="empty-library"><span>✦</span><p>Your media will be here,<br>ready when you are.</p></div></div>
+      <div class="library-foot"><svg><use href="#i-spark"/></svg><span><strong>A little note.</strong><br>Media is stored on your Cliproom server so you can continue from another device.</span></div>
+    </aside>
+    <section class="stage-panel" aria-label="Preview">
+      <div class="stage-heading"><div><p class="eyebrow">THE PREVIEW</p><h2>Your story in motion<span class="purple">.</span></h2></div><span id="ratioBadge" class="badge">16:9 · 720p</span></div>
+      <div class="stage-wrap">
+        <div class="canvas-frame" id="canvasFrame"><canvas id="canvas" width="1280" height="720" aria-label="Video preview"></canvas><div id="titleSelection" class="title-selection hidden" aria-label="Selected text: drag to move"><span class="title-selection-label">Drag to move</span><span class="title-resize" title="Drag to resize text" aria-label="Resize text"></span></div><div id="stageEmpty" class="stage-empty"><span class="empty-film"><svg><use href="#i-film"/></svg></span><strong>Every story starts somewhere.</strong><small>Add a video or photo to get started.</small><button id="emptyImportBtn" class="button button-light">Add your first clip</button></div></div>
+      </div>
+      <div class="transport">
+        <span id="timeDisplay" class="timecode">00:00.0 <span>/</span> 00:00.0</span>
+        <div class="transport-center"><button class="icon-button" id="startBtn" title="Go to beginning" aria-label="Go to beginning">|◀</button><button class="icon-button frame-step" id="prevFrameBtn" title="Previous frame" aria-label="Previous frame">‹|</button><button class="play-button" id="playBtn" title="Play" aria-label="Play"><svg><use href="#i-play"/></svg></button><button class="icon-button frame-step" id="nextFrameBtn" title="Next frame" aria-label="Next frame">|›</button><button class="icon-button" id="endBtn" title="Go to end" aria-label="Go to end">▶|</button></div>
+        <span class="preview-label"><span class="green-dot"></span> READY TO CREATE</span>
+      </div>
+    </section>
+    <aside class="inspector">
+      <p class="eyebrow">THE DETAILS</p><h2 id="inspectorTitle">Project<span class="purple">.</span></h2>
+      <p class="intro" id="inspectorIntro">The little things make it yours.</p>
+      <label class="field hidden" id="audioOptionsPicker"><span>Audio clip options</span><select id="audioOptionsSelect" aria-label="Audio clip options"></select><small>Select a clip here to adjust it without cutting.</small></label>
+      <div id="inspectorBody"></div>
+      <div class="inspector-note"><span>✦</span><p>Select a clip, title or audio on the timeline to adjust it.</p></div>
+    </aside>
+    <section class="timeline-panel" aria-label="Timeline">
+      <div class="timeline-top"><div><p class="eyebrow">THE TIMELINE</p><h2>Put it all together<span class="purple">.</span></h2></div>
+        <div class="timeline-actions"><button class="tiny-button" id="addVideoTrackBtn"><svg><use href="#i-plus"/></svg> Video track</button><button class="tiny-button" id="addAudioTrackBtn"><svg><use href="#i-plus"/></svg> Audio track</button><button class="tiny-button" id="addTitleBtn"><svg><use href="#i-text"/></svg> Add title</button><button class="tiny-button" id="splitBtn" title="Split the selected clip at the playhead"><svg><use href="#i-scissors"/></svg> Split</button><button class="tiny-button" id="duplicateBtn" title="Duplicate selected item"><svg><use href="#i-copy"/></svg> Duplicate</button><button class="tiny-button danger" id="removeBtn" title="Remove selected item"><svg><use href="#i-trash"/></svg> Remove</button><div class="zoom-controls" aria-label="Timeline zoom"><button class="tiny-button" id="zoomOutBtn" aria-label="Zoom out timeline">−</button><button class="tiny-button" id="zoomFitBtn" title="Fit timeline">Fit</button><button class="tiny-button" id="zoomInBtn" aria-label="Zoom in timeline">+</button></div></div>
+      </div>
+      <div class="timeline-scroll" id="timelineScroll"><div class="timeline-content" id="timelineContent"></div></div>
+      <p class="timeline-hint">Click or tap audio to cut; double-click or double-tap it to change speed. Use Audio clip options in the details panel to select without cutting. Drag clips to move them, or drag their edges to trim or stretch.</p>
+    </section>
+  </main>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <dialog id="projectsDialog" class="dialog"><div class="dialog-head"><div><p class="eyebrow">CONTINUE YOUR STORY</p><h2>Saved projects<span class="purple">.</span></h2></div><button class="icon-button close-dialog" data-close="projectsDialog" aria-label="Close">✕</button></div><p class="intro">Open a project saved on this server from any permitted device.</p><div id="projectList" class="project-list"></div><div class="dialog-actions"><button class="button button-outline" id="newProjectBtn">New project</button><button class="button button-quiet close-dialog" data-close="projectsDialog">Close</button></div></dialog>
+  <dialog id="exportDialog" class="dialog"><div class="dialog-head"><div><p class="eyebrow">READY WHEN YOU ARE</p><h2>Export your video<span class="purple">.</span></h2></div><button class="icon-button close-dialog" data-close="exportDialog" aria-label="Close">✕</button></div><p class="intro">Your browser renders the timeline in real time, including its sound and titles.</p><div class="export-card"><span class="export-icon"><svg><use href="#i-film"/></svg></span><div><strong id="exportSummary">Video</strong><p id="exportFormat">Checking available formats…</p></div></div><p class="mini-hint">Keep this tab open and in the foreground until the download is ready. Large projects need more time and device memory.</p><div id="exportProgressWrap" class="hidden"><div class="progress"><span id="exportProgress"></span></div><p id="exportStatus" class="mini-hint" role="status"></p></div><div class="dialog-actions"><button class="button button-outline close-dialog" data-close="exportDialog" id="exportCancelBtn">Cancel</button><button class="button button-accent" id="startExportBtn"><svg><use href="#i-download"/></svg> Export video</button></div></dialog>
+  <dialog id="conflictDialog" class="dialog"><div class="dialog-head"><div><p class="eyebrow">PROJECT CHANGED</p><h2>Keep your work<span class="purple">.</span></h2></div></div><p class="intro">This project was saved on another device since you opened it. Save your current version as a separate copy, or close this message and open the latest version.</p><div class="dialog-actions"><button class="button button-outline close-dialog" data-close="conflictDialog">Close</button><button class="button button-accent" id="saveCopyBtn">Save as a copy</button></div></dialog>
+</body>
+</html>
