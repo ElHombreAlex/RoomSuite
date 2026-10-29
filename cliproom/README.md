@@ -63,7 +63,7 @@ For an always-on installation, run `node server.js` as a dedicated, unprivileged
 
 ## Render from a program
 
-The optional `POST /api/render` endpoint accepts a saved project ID or project JSON and returns an MP4 or WebM file without opening an editor for the caller. It runs the same Cliproom exporter in an isolated headless Chromium process on the server, with no external API. It requires Node.js 20+, the optional dependencies and browser installed **on the server**, under the user running the RoomSuite service:
+The optional `POST /api/render` endpoint accepts a saved project ID or project JSON and returns an MP4 or WebM file without opening an editor for the caller. It renders in an isolated headless Chromium process on the server, with no external API. It requires Node.js 20+, the optional dependencies and browser installed **on the server**, under the user running the RoomSuite service:
 
 ```sh
 npm ci --prefix mcp
@@ -84,11 +84,13 @@ curl -fS -D render-headers.txt -o render-video \
 
 Alternatively send `{"project": <project state>}` or `{"project": <saved project wrapper>}`. Referenced assets must already be in that server's Cliproom library. Inspect the `Content-Type` response header to choose the `.mp4` or `.webm` extension. The endpoint requires the same-origin write headers and obeys the same host restrictions as project writes; it does not add authentication. The MCP equivalent, `cliproom_render_project`, saves the response directly in its configured workspace. See the [MCP guide](../mcp/README.md) for project and media tools.
 
+The default `render_mode` is `"realtime"`. Add `"render_mode":"offline"` to the JSON request for an offline WebM export that renders frames without waiting for playback. Offline mode supports normal-speed video and audio, still JPEG/PNG/WebP images, titles, tracks, fades and keyframes, for timelines up to 10 minutes. Retimed video or audio, animated images and AVIF require realtime mode. Unsupported codecs also report an error suggesting realtime mode. Offline export requires compatible Chromium WebCodecs and stores decoded audio and the output in memory; performance depends on the media and hardware, and it is not guaranteed to finish faster than real time. The optional dependencies include [Mediabunny](https://github.com/Vanilagy/mediabunny) (MPL-2.0) for encoding and muxing. The response's `X-Cliproom-Render-Mode` header reports the selected mode.
+
 ## Practical limits
 
 Import and playback depend on the browser's own decoders, so not every codec in an MP4, MOV, or other container will work. Files are limited to 2 GB each, subject to available server storage, browser memory, and network reliability. Uploading and rendering large files can take time.
 
-Export happens in real time and keeps encoded chunks in browser memory. Keep the tab visible until it finishes; export stops if the tab is hidden. Try 720p for older devices. Playback and export can stutter or drift if the device or network cannot decode media quickly enough, and they are not intended as frame-accurate professional editing. The frame buttons use 1/30-second steps rather than the source file's exact frame rate. Pitch preservation and color adjustments depend on browser support. Some mobile browsers do not support the required recording or audio APIs; the export dialog reports the available format.
+The editor's export happens in real time and keeps encoded chunks in browser memory. Keep the tab visible until it finishes; export stops if the tab is hidden. Try 720p for older devices. Playback and export can stutter or drift if the device or network cannot decode media quickly enough, and they are not intended as frame-accurate professional editing. The frame buttons use 1/30-second steps rather than the source file's exact frame rate. Pitch preservation and color adjustments depend on browser support. Some mobile browsers do not support the required recording or audio APIs; the export dialog reports the available format.
 
 This version supports multiple picture and audio tracks, keyframes, fades, cross-dissolves and text overlays. It does not yet provide automatic beat matching, advanced effects, a project archive, or an in-app storage cleanup tool. Several simultaneous videos can place significant load on a device; the actual number of usable tracks depends on its hardware, browser, media and network. Imported media stays on the server even if removed from the timeline; manage storage and backups on the server. Project media is stored on that server without application-level encryption.
 

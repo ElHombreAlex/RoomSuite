@@ -32,11 +32,16 @@ const animation = {
 const media = z.object({
   input:file, track:z.number().int().min(1).max(100).optional().describe('Video or audio track, starting at 1.'),
   start:seconds.optional().describe('Timeline start in seconds. Omit to append on this track.'),
-  source_in:seconds.optional(), source_out:seconds.optional(), duration:z.number().positive().max(3600).optional().describe('Duration in seconds for a still image.'),
+  source_in:seconds.optional(), source_out:seconds.optional(), duration:z.number().positive().max(3600).optional().describe('For a still image, source end time in seconds; with source_in 0, this is the source duration before applying speed.'),
   speed:z.number().min(0.5).max(4).optional(), ...animation,
   fit:z.enum(['contain','cover']).optional(),
-  keyframes:z.array(z.object({ time:seconds.describe('Time in source media seconds, not project timeline seconds.'), ...animation })).max(10000).optional()
-    .describe('Linearly interpolated animation. A property absent from a keyframe is unchanged by that keyframe.'),
+  keyframes:z.array(z.object({
+    timeline_time:seconds.optional().describe('Preferred: absolute time on the project timeline, in seconds; must fall within this clip.'),
+    source_time:seconds.optional().describe('Explicit time in source-media seconds.'),
+    time:seconds.optional().describe('Legacy alias for source_time, in source-media seconds. Prefer timeline_time or source_time.'),
+    ...animation
+  })).max(10000).optional()
+    .describe('Set exactly one of timeline_time, source_time, or the legacy time on each keyframe. Properties interpolate linearly.'),
   fade_in:seconds.optional(), fade_out:seconds.optional()
 });
 function result(data) { return { content:[{ type:'text', text:JSON.stringify(data) }], structuredContent:data }; }
@@ -142,12 +147,13 @@ function buildServer() {
   }, handler(recordScene));
   server.registerTool('cliproom_render', {
     title:'Create and render a Cliproom video',
-    description:'Import local media, assemble tracks, positioning, keyframes and optional titles, and render in real time. Media is uploaded into the Cliproom server library and remains there. Optionally save an editable project. Output extension is chosen by the browser.',
+    description:'Import media, assemble tracks, positioning, keyframes and titles, then render via the Cliproom server endpoint. Use timeline_time for keyframes at absolute timeline positions. Uploaded media remains in the server library. Optionally save an editable project.',
     inputSchema:z.object({
       output:file.describe('New output filename stem, or a filename with the browser-supported video extension.'),
       name:z.string().min(1).max(160).optional(), aspect:z.enum(['16:9','9:16','1:1']).optional(), quality:z.enum(['720p','1080p']).optional(),
       media:z.array(media).min(1).max(1000),
       titles:z.array(z.object({ text:z.string().min(1).max(240), start:seconds, end:seconds, x:z.number().min(0).max(100).optional(), y:z.number().min(0).max(100).optional(), size:z.number().min(2).max(30).optional(), color:color.optional() })).max(100).optional(),
+      render_mode:z.enum(['realtime','offline']).optional().describe('Offline exports WebM without waiting for playback; requires normal-speed video/audio, supported codecs, and a project up to 10 minutes. Defaults to realtime.'),
       save_project:z.boolean().optional()
     }), outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(renderVideo));
@@ -157,7 +163,8 @@ function buildServer() {
     inputSchema:z.object({
       output:file.describe('New output filename stem, or a filename with the browser-supported video extension.'),
       project_id:z.string().uuid().optional().describe('ID of a saved Cliproom project on this server.'),
-      project_path:file.optional().describe('Path to a Cliproom project JSON file containing the state or a saved-project wrapper.')
+      project_path:file.optional().describe('Path to a Cliproom project JSON file containing the state or a saved-project wrapper.'),
+      render_mode:z.enum(['realtime','offline']).optional().describe('Offline exports WebM without waiting for playback; requires normal-speed video/audio, supported codecs, and a project up to 10 minutes. Defaults to realtime.')
     }), outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(renderSavedProject));
   return server;

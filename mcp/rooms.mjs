@@ -1,7 +1,9 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import crypto from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
+import T from '../cliproom/public/timeline.js';
 import { inputPath, outputPath, saveDownload, saveResponse } from './files.mjs';
 
 const configuredUrl = process.env.ROOMSUITE_MCP_URL || 'http://127.0.0.1:8090';
@@ -98,12 +100,47 @@ export async function inspectMedia(args, signal) {
 export async function importCliproomMedia(args, signal) {
   const file = await inputPath(args.input);
   return withRoom('/cliproom/', 'Cliproom', signal, async page => {
-    await page.locator('#fileInput').setInputFiles(file);
-    try { await page.waitForFunction(() => Number(document.querySelector('#assetCount').textContent) === 1 && !document.querySelector('#importBtn').disabled, null, { timeout:Math.min(timeoutMs, 60000) }); }
-    catch { throw new Error('Could not import media: ' + (await page.locator('#toast').textContent())); }
-    const asset = await page.evaluate(() => state.assets[0]);
+    const asset = await uploadCliproomMedia(page, file);
     return { asset, note:'The media is stored in the Cliproom server library. No project was saved.' };
   });
+}
+async function uploadCliproomMedia(page, file) {
+  const handle = await page.evaluateHandle(() => { const input = document.createElement('input'); input.type = 'file'; document.body.append(input); return input; });
+  try {
+    await handle.asElement().setInputFiles(file);
+    return await handle.evaluate(async input => {
+      const file = input.files[0], extensions = { mp4:'video/mp4',m4v:'video/x-m4v',mov:'video/quicktime',webm:'video/webm',mp3:'audio/mpeg',m4a:'audio/mp4',wav:'audio/wav',ogg:'audio/ogg',flac:'audio/flac',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',gif:'image/gif',avif:'image/avif' };
+      const type = (file.type || extensions[file.name.split('.').pop().toLowerCase()] || '').toLowerCase().split(';')[0];
+      const kind = type.startsWith('image/') ? 'image' : type.startsWith('audio/') ? 'audio' : type.startsWith('video/') ? 'video' : null;
+      if (!kind || type === 'image/svg+xml') throw new Error('Choose a supported video, audio file, or photo.');
+      if (!file.size || file.size > 2 * 1024 * 1024 * 1024) throw new Error('Media must be nonempty and at most 2 GB.');
+      const url = URL.createObjectURL(file); let info;
+      try {
+        const media = kind === 'image' ? new Image() : document.createElement(kind);
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('Reading media metadata timed out.')), 20000);
+          const loaded = () => { clearTimeout(timer); resolve(); }, failed = () => { clearTimeout(timer); reject(new Error('The browser cannot decode this media.')); };
+          if (kind === 'image') media.onload = loaded; else { media.preload = 'metadata'; media.onloadedmetadata = loaded; }
+          media.onerror = failed; media.src = url;
+        });
+        if (kind !== 'image' && (!Number.isFinite(media.duration) || media.duration <= 0)) throw new Error('The file has no readable duration.');
+        info = { duration:kind === 'image' ? 5 : media.duration, width:kind === 'image' ? media.naturalWidth : media.videoWidth || 0, height:kind === 'image' ? media.naturalHeight : media.videoHeight || 0 };
+      } finally { URL.revokeObjectURL(url); }
+      const response = await fetch('/api/assets', { method:'POST', headers:{ 'Content-Type':'application/octet-stream', 'X-Cliproom-Request':'1', 'X-File-Type':type, 'X-File-Name':encodeURIComponent(file.name) }, body:file });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Could not upload media (' + response.status + ').');
+      return { ...data, ...info, kind };
+    });
+  } finally { await handle.evaluate(input => input.remove()).catch(() => {}); await handle.dispose(); }
+}
+async function preflightVideoOutput(requested, mode) {
+  const extension = path.extname(requested).toLowerCase();
+  if (mode === 'offline') {
+    if (extension && extension !== '.webm') throw new Error('Offline rendering outputs WebM. Use a .webm filename or omit the extension.');
+    await outputPath(outputWithExtension(requested, '.webm'), ['.webm']);
+  } else if (extension) {
+    await outputPath(requested, ['.mp4', '.webm']);
+  }
 }
 async function downloadTo(page, button, output, mime) {
   const [download] = await Promise.all([page.waitForEvent('download', { timeout:timeoutMs }), page.locator(button).click()]);
@@ -231,84 +268,84 @@ export async function recordScene(args, signal, progress) {
 }
 
 export async function renderVideo(args, signal, progress) {
+  await preflightVideoOutput(args.output, args.render_mode);
+  for (const entry of args.media) for (const frame of entry.keyframes || []) {
+    if (['time','source_time','timeline_time'].filter(key => frame[key] !== undefined).length !== 1) throw new Error('Each keyframe must specify exactly one of timeline_time, source_time, or time.');
+    if (!Object.keys(frame).some(key => !['time','source_time','timeline_time'].includes(key))) throw new Error('A keyframe must set at least one property.');
+  }
   const files = await Promise.all(args.media.map(entry => inputPath(entry.input)));
-  return withRoom('/cliproom/', 'Cliproom', signal, async page => {
-    const format = await page.evaluate(() => formatSupport());
-    if (!format) throw new Error('Cliproom cannot export video in this browser.');
-    const ext = '.' + format.extension, out = await outputPath(outputWithExtension(args.output, ext), [ext]);
+  const imported = await withRoom('/cliproom/', 'Cliproom', signal, async page => {
+    const imported = [];
     for (let i = 0; i < files.length; i++) {
-      await page.locator('#fileInput').setInputFiles(files[i]);
-      try { await page.waitForFunction(expected => Number(document.querySelector('#assetCount').textContent) === expected && !document.querySelector('#importBtn').disabled, i + 1, { timeout:Math.min(timeoutMs, 60000) }); }
-      catch { throw new Error('Could not import ' + args.media[i].input + ': ' + (await page.locator('#toast').textContent())); }
+      try { imported.push(await uploadCliproomMedia(page, files[i])); }
+      catch (error) { throw new Error('Could not import ' + args.media[i].input + ': ' + error.message); }
     }
-    const configured = await page.evaluate(config => {
-      const cursors = new Map();
-      change(() => {
-        state.name = config.name || 'RoomSuite agent video'; state.aspect = config.aspect || '16:9'; state.quality = config.quality || '720p';
-        config.media.forEach((entry, i) => {
-          const asset = state.assets[i], isAudio = asset.kind === 'audio';
-          const clips = isAudio ? state.audioClips : state.clips;
-          const item = clips.find(clip => clip.assetId === asset.id);
-          if (!item) throw new Error('Imported media was not added to the timeline.');
-          const tracks = isAudio ? state.audioTracks : state.videoTracks, index = (entry.track || 1) - 1;
-          while (tracks.length <= index) tracks.push(isAudio ? { id:uid(), name:'Audio ' + (tracks.length + 1), muted:false } : { id:uid(), name:'Video ' + (tracks.length + 1), muted:false, hidden:false });
-          item.trackId = tracks[index].id;
-          item.in = entry.source_in ?? 0;
-          item.out = asset.kind === 'image' ? (entry.duration ?? 5) : (entry.source_out ?? asset.duration);
-          item.rate = entry.speed ?? 1;
-          if (item.in < 0 || item.out <= item.in || (asset.kind !== 'image' && item.out > asset.duration + .001)) throw new Error('Invalid source range for ' + asset.name + '.');
-          const key = (isAudio ? 'audio' : 'video') + index;
-          item.start = entry.start ?? (cursors.get(key) || 0);
-          cursors.set(key, Math.max(cursors.get(key) || 0, item.start + (item.out - item.in) / item.rate));
-          if (entry.volume !== undefined) item.volume = entry.volume;
-          if (!isAudio && entry.fit) item.fit = entry.fit;
-          if (!isAudio) for (const key of ['scale','x','y','opacity','rotation','brightness','contrast','saturation']) if (entry[key] !== undefined) item[key] = entry[key];
-          if (entry.keyframes) {
-            const times = new Set();
-            item.keyframes = entry.keyframes.map(frame => {
-              if (times.has(frame.time)) throw new Error('Keyframe times must be unique for ' + asset.name + '.');
-              times.add(frame.time);
-              if (!Object.keys(frame).some(key => key !== 'time')) throw new Error('A keyframe must set at least one property.');
-              return { id:uid(), ...frame };
-            }).sort((a,b) => a.time - b.time);
-          }
-          item.fadeIn = entry.fade_in || 0; item.fadeOut = entry.fade_out || 0;
-        });
-        for (const title of config.titles || []) {
-          if (title.end <= title.start || title.end > T.duration(state) + .001) throw new Error('Title timing must fit within the timeline.');
-          state.titles.push({ id:uid(), text:title.text, start:title.start, end:title.end, position:'custom', x:title.x ?? 50, y:title.y ?? 50, width:84, rotation:0, font:'sans-serif', bold:true, italic:false, size:title.size ?? 6, color:title.color || '#ffffff' });
-        }
-        selected = null;
-      });
-      return { duration:T.duration(state) };
-    }, args);
-    if (!configured.duration) throw new Error('The timeline is empty.');
-    let project = null;
-    if (args.save_project) {
-      project = await page.evaluate(async () => { await saveProject(); return revision ? { id:projectId, revision } : null; });
-      if (!project) throw new Error('Cliproom could not save the project: ' + await page.locator('#toast').textContent());
-    }
-    await page.locator('#exportBtn').click();
-    if (await page.locator('#startExportBtn').isDisabled()) throw new Error('Cliproom cannot export video in this browser.');
-    let timer, progressBusy = false, lastProgress = 0;
-    if (progress) timer = setInterval(async () => {
-      if (progressBusy) return;
-      progressBusy = true;
-      try {
-        const current = await page.evaluate(() => currentTime);
-        const next = Math.min(95, Math.max(lastProgress, 5 + Math.floor(current / configured.duration * 90)));
-        if (next > lastProgress) { lastProgress = next; await progress(next, 100, 'Rendering the Cliproom timeline…'); }
-      } catch {} finally { progressBusy = false; }
-    }, 5000);
-    let result;
-    try { result = await downloadTo(page, '#startExportBtn', out, mimeByExt[ext]); }
-    finally { if (timer) clearInterval(timer); }
-    return { ...result, room:'Cliproom', operation:'render_video', duration_seconds:configured.duration, project, note:'Imported media remains in the Cliproom server library.' };
+    return imported;
   });
+  const uid = () => crypto.randomUUID(), state = T.empty(uid), cursors = new Map();
+  state.assets = imported;
+  state.name = args.name || 'RoomSuite agent video'; state.aspect = args.aspect || '16:9'; state.quality = args.quality || '720p';
+  args.media.forEach((entry, i) => {
+    const asset = state.assets[i], isAudio = asset.kind === 'audio';
+    const clips = isAudio ? state.audioClips : state.clips;
+    const item = isAudio ? { id:uid(), assetId:asset.id, rate:1, volume:.7, fadeIn:0, fadeOut:0 } :
+      { id:uid(), assetId:asset.id, rate:1, volume:1, fit:'contain', opacity:1, scale:1, x:50, y:50, brightness:100, contrast:100, saturation:100, rotation:0, flipX:false, fadeIn:0, fadeOut:0 };
+    clips.push(item);
+    const tracks = isAudio ? state.audioTracks : state.videoTracks, index = (entry.track || 1) - 1;
+    while (tracks.length <= index) tracks.push(isAudio ? { id:uid(), name:'Audio ' + (tracks.length + 1), muted:false } : { id:uid(), name:'Video ' + (tracks.length + 1), muted:false, hidden:false });
+    item.trackId = tracks[index].id;
+    item.in = entry.source_in ?? 0;
+    item.out = asset.kind === 'image' ? (entry.duration ?? 5) : (entry.source_out ?? asset.duration);
+    item.rate = entry.speed ?? 1;
+    if (item.in < 0 || item.out <= item.in || (asset.kind !== 'image' && item.out > asset.duration + .001)) throw new Error('Invalid source range for ' + asset.name + '.');
+    const key = (isAudio ? 'audio' : 'video') + index;
+    item.start = entry.start ?? (cursors.get(key) || 0);
+    cursors.set(key, Math.max(cursors.get(key) || 0, item.start + (item.out - item.in) / item.rate));
+    if (entry.volume !== undefined) item.volume = entry.volume;
+    if (!isAudio && entry.fit) item.fit = entry.fit;
+    if (!isAudio) for (const key of ['scale','x','y','opacity','rotation','brightness','contrast','saturation']) if (entry[key] !== undefined) item[key] = entry[key];
+    if (entry.keyframes) {
+      const times = new Set();
+      item.keyframes = entry.keyframes.map(frame => {
+        const { timeline_time, source_time, time:legacyTime, ...values } = frame;
+        if (timeline_time !== undefined && (timeline_time < item.start - 1e-9 || timeline_time > T.end(item) + 1e-9)) throw new Error('Keyframe timeline_time must fall within the clip for ' + asset.name + '.');
+        const time = timeline_time === undefined ? (source_time ?? legacyTime) : Math.max(item.in, Math.min(item.out, item.in + (timeline_time - item.start) * T.rate(item)));
+        const timeKey = Math.round(time * 1e9);
+        if (times.has(timeKey)) throw new Error('Keyframe times must be unique for ' + asset.name + '.');
+        times.add(timeKey);
+        return { id:uid(), time, ...values };
+      }).sort((a,b) => a.time - b.time);
+    }
+    item.fadeIn = entry.fade_in || 0; item.fadeOut = entry.fade_out || 0;
+  });
+  for (const title of args.titles || []) {
+    if (title.end <= title.start || title.end > T.duration(state) + .001) throw new Error('Title timing must fit within the timeline.');
+    state.titles.push({ id:uid(), text:title.text, start:title.start, end:title.end, position:'custom', x:title.x ?? 50, y:title.y ?? 50, width:84, rotation:0, font:'sans-serif', bold:true, italic:false, size:title.size ?? 6, color:title.color || '#ffffff' });
+  }
+  const assembled = { state, duration:T.duration(state) };
+  if (!assembled.duration) throw new Error('The timeline is empty.');
+  let project = null;
+  if (args.save_project) {
+    const origin = serverUrl(), id = crypto.randomUUID();
+    const response = await fetch(origin + '/api/projects/' + id, { method:'PUT', signal,
+      headers:{ 'Content-Type':'application/json', 'Origin':origin, 'X-Cliproom-Request':'1' },
+      body:JSON.stringify({ baseRevision:0, state:assembled.state }) });
+    const saved = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(saved.error || 'Could not save the Cliproom project (' + response.status + ').');
+    project = { id:saved.id, revision:saved.revision };
+  }
+  await progress?.(5, 100, 'Project assembled; rendering on the Cliproom server…');
+  const body = project ? { project_id:project.id } : { project:assembled.state };
+  if (args.render_mode) body.render_mode = args.render_mode;
+  const result = await renderProjectRequest(body, args.output, signal);
+  const warnings = args.media.some(entry => entry.keyframes?.some(frame => frame.time !== undefined)) ?
+    ['Legacy keyframe time means source-media seconds, not timeline seconds. Prefer timeline_time or source_time.'] : [];
+  return { ...result, operation:'render_video', duration_seconds:assembled.duration, project, warnings, note:'Imported media remains in the Cliproom server library.' };
 }
 
 export async function renderSavedProject(args, signal) {
   if (!!args.project_id === !!args.project_path) throw new Error('Provide either project_id or project_path.');
+  await preflightVideoOutput(args.output, args.render_mode);
   let body;
   if (args.project_id) body = { project_id:args.project_id };
   else {
@@ -317,6 +354,11 @@ export async function renderSavedProject(args, signal) {
     try { body = { project:JSON.parse(await fs.readFile(file, 'utf8')) }; }
     catch { throw new Error('Project file is not valid JSON.'); }
   }
+  if (args.render_mode) body.render_mode = args.render_mode;
+  return renderProjectRequest(body, args.output, signal);
+}
+
+async function renderProjectRequest(body, requestedOutput, signal) {
   const controller = new AbortController(), cancel = () => controller.abort();
   if (signal?.aborted) throw new Error('The request was cancelled.');
   signal?.addEventListener('abort', cancel, { once:true });
@@ -328,14 +370,16 @@ export async function renderSavedProject(args, signal) {
       body:JSON.stringify(body), signal:controller.signal
     });
     if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'Render failed (' + response.status + ').'); }
+    const actualMode = response.headers.get('x-cliproom-render-mode') || 'realtime';
+    if (body.render_mode === 'offline' && actualMode !== 'offline') { await response.body?.cancel(); throw new Error('The RoomSuite server does not support offline rendering. Update and restart the server.'); }
     const type = (response.headers.get('content-type') || '').split(';')[0];
     const ext = type === 'video/mp4' ? '.mp4' : type === 'video/webm' ? '.webm' : null;
     if (!ext) { await response.body?.cancel(); throw new Error('The renderer returned an unsupported video format.'); }
     let output;
-    try { output = await outputPath(outputWithExtension(args.output, ext), [ext]); }
+    try { output = await outputPath(outputWithExtension(requestedOutput, ext), [ext]); }
     catch (error) { await response.body?.cancel(); throw error; }
     const saved = await saveResponse(response, output, type, controller.signal);
-    return { ...saved, room:'Cliproom', operation:'render_project', project_id:args.project_id || null };
+    return { ...saved, room:'Cliproom', operation:'render_project', project_id:body.project_id || null, render_mode:actualMode };
   } catch (error) {
     if (controller.signal.aborted) throw new Error(signal?.aborted ? 'The request was cancelled.' : 'The render timed out.');
     throw error;

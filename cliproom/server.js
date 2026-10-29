@@ -22,7 +22,7 @@ const MAX_MEDIA = 2 * 1024 * 1024 * 1024;
 const MAX_PROJECT = 2 * 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const mediaTypes = new Set(['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-m4v', 'video/mpeg', 'audio/mpeg', 'audio/mp4', 'audio/x-m4a', 'audio/ogg', 'audio/wav', 'audio/wave', 'audio/x-wav', 'audio/webm', 'audio/aac', 'audio/flac', 'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif']);
-const publicFiles = { '/': ['index.html', 'text/html; charset=utf-8'], '/index.html': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/timeline.js': ['timeline.js', 'text/javascript; charset=utf-8'], '/styles.css': ['styles.css', 'text/css; charset=utf-8'] };
+const publicFiles = { '/': ['index.html', 'text/html; charset=utf-8'], '/index.html': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/timeline.js': ['timeline.js', 'text/javascript; charset=utf-8'], '/offline-render.js': ['offline-render.js', 'text/javascript; charset=utf-8'], '/styles.css': ['styles.css', 'text/css; charset=utf-8'] };
 const suiteRoots = { '/suite/': 'suite', '/soundroom/': 'SoundRoom', '/captureroom/': 'CaptureRoom', '/vectorroom/': 'VectorRoom', '/pixelroom/': 'PixelRoom/dist' };
 const suiteTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.onnx': 'application/octet-stream', '.bin': 'application/octet-stream', '.gz': 'application/gzip', '.txt': 'text/plain; charset=utf-8', '.woff': 'font/woff', '.woff2': 'font/woff2' };
 const locks = new Map();
@@ -120,6 +120,11 @@ async function route(req, res) {
     }
   }
   if (req.method === 'GET' && pathname === '/api/health') return json(res, 200, { ok: true });
+  if ((req.method === 'GET' || req.method === 'HEAD') && pathname === '/api/render/mediabunny.mjs') {
+    const bundle = path.join(SUITE_ROOT, 'mcp', 'node_modules', 'mediabunny', 'dist', 'bundles', 'mediabunny.min.mjs');
+    try { await fsp.access(bundle); } catch { throw error(503, 'Offline rendering requires the optional MCP dependencies. Run npm ci --prefix mcp.'); }
+    return sendFile(req, res, bundle, 'text/javascript; charset=utf-8');
+  }
   if (req.method === 'POST' && pathname === '/api/render') {
     checkWrite(req);
     if (!String(req.headers['content-type'] || '').startsWith('application/json')) throw error(415, 'JSON is required.');
@@ -131,17 +136,22 @@ async function route(req, res) {
       const saved = await readProject(body.project_id); if (!saved) throw error(404, 'Project not found.');
       input = saved.state;
     } else if (input && input.state) input = input.state;
-    const { validateProject, renderProject } = require('./render');
+    const mode = body.render_mode || 'realtime';
+    if (!['realtime', 'offline'].includes(mode)) throw error(400, 'render_mode must be realtime or offline.');
+    const { validateProject, renderProject, offlineUnavailable } = require('./render');
     const project = await validateProject(input, ASSETS);
+    const unsupported = mode === 'offline' && await offlineUnavailable(project, ASSETS);
+    if (unsupported) throw error(422, unsupported);
     if (res.destroyed) return;
     const controller = new AbortController();
     const disconnected = () => { if (!res.writableEnded) controller.abort(); };
     res.once('close', disconnected);
     let output;
     try {
-      output = await renderProject(project, { port:PORT, suiteMode:SUITE_MODE, signal:controller.signal });
+      output = await renderProject(project, { port:PORT, suiteMode:SUITE_MODE, signal:controller.signal, mode });
       if (controller.signal.aborted) return;
       res.setHeader('Content-Type', output.mime); res.setHeader('Content-Length', output.bytes);
+      res.setHeader('X-Cliproom-Render-Mode', mode);
       res.setHeader('Content-Disposition', 'attachment; filename="cliproom.' + output.extension + '"');
       res.writeHead(200); await pipeline(fs.createReadStream(output.file), res);
     } catch (cause) {

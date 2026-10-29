@@ -103,9 +103,84 @@ test('Cliproom renders a timeline and saves an editable project', async () => {
     titles:[{text:'Made with RoomSuite',start:0,end:1}], save_project:true
   });
   assert.ok(result.bytes > 1000); assert.ok(result.project.id); assert.equal(result.project.revision,1); savedProjectId = result.project.id;
+  assert.match(result.warnings[0],/source-media seconds/);
   const project = await (await fetch(base + '/api/projects/' + result.project.id)).json();
   assert.equal(project.state.name,'MCP test'); assert.equal(project.state.titles[0].text,'Made with RoomSuite'); assert.equal(project.state.assets.length,2);
   assert.equal(project.state.version,4); assert.equal(project.state.clips[0].x,25); assert.equal(project.state.clips[0].scale,.5); assert.equal(project.state.clips[0].keyframes[1].x,75);
+});
+test('MCP keyframes support explicit timeline time for a trimmed and retimed clip', async () => {
+  const result = await call('cliproom_render', { output:'trimmed', save_project:true, render_mode:'offline', media:[{
+    input:'cropped.png', source_in:5, duration:7, start:2, speed:2,
+    keyframes:[{timeline_time:2,x:25},{timeline_time:2.25,x:50},{source_time:6.5,x:75}]
+  }] });
+  const project = await (await fetch(base + '/api/projects/' + result.project.id)).json();
+  const clip = project.state.clips[0];
+  assert.deepEqual(clip.keyframes.map(frame => frame.time),[5,5.5,6.5]);
+  assert.deepEqual(result.warnings,[]);
+  assert.ok(clip.keyframes.every(frame => !('timeline_time' in frame) && !('source_time' in frame)));
+  await assert.rejects(call('cliproom_render',{output:'conflict',media:[{input:'cropped.png',keyframes:[{time:0,timeline_time:0,x:5}]}]}),/exactly one/);
+  await assert.rejects(call('cliproom_render',{output:'outside',media:[{input:'cropped.png',start:2,duration:1,keyframes:[{timeline_time:1,x:5}]}]}),/must fall within the clip/);
+});
+test('create-and-render can render without saving a project', async () => {
+  const count = (await call('cliproom_list_projects')).projects.length;
+  const result = await call('cliproom_render',{output:'unsaved',render_mode:'offline',media:[{input:'cropped.png',duration:.4,keyframes:[{timeline_time:0,x:25}]}]});
+  assert.equal(result.project,null); assert.equal(result.render_mode,'offline'); assert.ok(result.bytes > 1000);
+  assert.equal((await call('cliproom_list_projects')).projects.length,count);
+});
+test('offline rendering produces animated video with audible mixed audio', async () => {
+  const project = await (await fetch(base + '/api/projects/' + savedProjectId)).json();
+  project.state.audioClips[0].keyframes=[{time:0,volume:0},{time:.9,volume:1}];
+  await fs.writeFile(path.join(work,'offline-audio.json'),JSON.stringify(project));
+  const result = await call('cliproom_render_project',{project_path:'offline-audio.json',output:'offline',render_mode:'offline'});
+  assert.equal(result.render_mode,'offline'); assert.equal(result.mime_type,'video/webm');
+  const bytes = await fs.readFile(result.path); assert.equal(bytes.readUInt32BE(0),0x1a45dfa3);
+  const browser = await chromium.launch({ headless:true, ...(process.env.ROOMSUITE_BROWSER_PATH ? {executablePath:process.env.ROOMSUITE_BROWSER_PATH} : {}) });
+  try {
+    const page = await browser.newPage(); await page.goto(base + '/cliproom/');
+    await page.evaluate(() => { const input=document.createElement('input'); input.type='file'; input.id='offlineResult'; document.body.append(input); });
+    await page.locator('#offlineResult').setInputFiles(result.path);
+    const observed = await page.evaluate(async () => {
+      const file=document.querySelector('#offlineResult').files[0], audio=new AudioContext();
+      const buffer=await audio.decodeAudioData(await file.arrayBuffer()); await audio.close();
+      const samples=buffer.getChannelData(0);
+      const rms=(start,end)=>{ let sum=0; for(let i=Math.floor(start*buffer.sampleRate);i<Math.min(samples.length,Math.floor(end*buffer.sampleRate));i++) sum+=samples[i]*samples[i]; return Math.sqrt(sum/Math.max(1,Math.floor((end-start)*buffer.sampleRate))); };
+      const video=document.createElement('video'); video.muted=true; const url=URL.createObjectURL(file); video.src=url;
+      await new Promise((resolve,reject)=>{video.onloadedmetadata=resolve;video.onerror=reject;});
+      const canvas=document.createElement('canvas');canvas.width=video.videoWidth;canvas.height=video.videoHeight;const ctx=canvas.getContext('2d');
+      const sample=async time=>{await new Promise((resolve,reject)=>{video.onseeked=resolve;video.onerror=reject;video.currentTime=time;});ctx.drawImage(video,0,0);return [ctx.getImageData(Math.round(canvas.width*.25),Math.round(canvas.height*.69),1,1).data[0],ctx.getImageData(Math.round(canvas.width*.75),Math.round(canvas.height*.69),1,1).data[0]];};
+      const first=await sample(.2),last=await sample(1.25);URL.revokeObjectURL(url);
+      return {first,last,audible:rms(.3,.7),early:rms(.2,.3),late:rms(.7,.8),silent:rms(1.2,1.4),duration:buffer.duration};
+    });
+    assert.ok(observed.first[0] > observed.first[1] + 15,JSON.stringify(observed));
+    assert.ok(observed.last[1] > observed.last[0] + 15,JSON.stringify(observed));
+    assert.ok(observed.audible > .03 && observed.silent < .01,JSON.stringify(observed));
+    assert.ok(observed.late > observed.early * 2,JSON.stringify(observed));
+    assert.ok(Math.abs(observed.duration-1.5) < .1,JSON.stringify(observed));
+  } finally { await browser.close(); }
+});
+test('offline rendering includes normal-speed video frames and original audio', async () => {
+  const input = (await fs.readdir(work)).find(name => /^video\.(mp4|webm)$/.test(name));
+  assert.ok(input);
+  const result = await call('cliproom_render',{output:'offline-video',render_mode:'offline',media:[{input,source_out:1.4}]});
+  assert.equal(result.render_mode,'offline');
+  const browser = await chromium.launch({ headless:true, ...(process.env.ROOMSUITE_BROWSER_PATH ? {executablePath:process.env.ROOMSUITE_BROWSER_PATH} : {}) });
+  try {
+    const page = await browser.newPage(); await page.goto(base + '/cliproom/');
+    await page.evaluate(() => { const input=document.createElement('input');input.type='file';input.id='videoOffline';document.body.append(input); });
+    await page.locator('#videoOffline').setInputFiles(result.path);
+    const actual = await page.evaluate(async () => {
+      const file=document.querySelector('#videoOffline').files[0],audio=new AudioContext(),buffer=await audio.decodeAudioData(await file.arrayBuffer());await audio.close();
+      const data=buffer.getChannelData(0);let power=0;for(let i=Math.floor(.3*buffer.sampleRate);i<Math.floor(.7*buffer.sampleRate);i++)power+=data[i]*data[i];
+      const video=document.createElement('video');video.muted=true;const url=URL.createObjectURL(file);video.src=url;await new Promise((resolve,reject)=>{video.onloadedmetadata=resolve;video.onerror=reject;});
+      const canvas=document.createElement('canvas');canvas.width=video.videoWidth;canvas.height=video.videoHeight;const ctx=canvas.getContext('2d');
+      async function sample(time){await new Promise((resolve,reject)=>{video.onseeked=resolve;video.onerror=reject;video.currentTime=time;});ctx.drawImage(video,0,0);return [ctx.getImageData(Math.round(canvas.width*.25),Math.round(canvas.height*.69),1,1).data[0],ctx.getImageData(Math.round(canvas.width*.75),Math.round(canvas.height*.69),1,1).data[0]];}
+      const first=await sample(.2),last=await sample(1.2);URL.revokeObjectURL(url);return {first,last,rms:Math.sqrt(power/(.4*buffer.sampleRate))};
+    });
+    assert.ok(actual.rms > .02,JSON.stringify(actual));
+    assert.ok(actual.first[0] > actual.first[1] + 10 && actual.last[1] > actual.last[0] + 10,JSON.stringify(actual));
+  } finally { await browser.close(); }
+  const webm = await call('cliproom_render',{output:'offline-webm-input',render_mode:'offline',media:[{input:'offline.webm',source_out:1.4}]});
+  assert.equal(webm.mime_type,'video/webm'); assert.ok(webm.bytes > 1000);
 });
 test('project render endpoint accepts a saved project and returns video without UI driving', async () => {
   const rendered = await call('cliproom_render_project',{ project_id:savedProjectId, output:'rerendered' });
@@ -178,6 +253,17 @@ test('render endpoint rejects requests without the same-origin header or a valid
   saved.state.clips[0].keyframes[1].time = saved.state.clips[0].keyframes[0].time;
   const duplicate = await fetch(base + '/api/render', { method:'POST', headers:{ Origin:base,'X-Cliproom-Request':'1','Content-Type':'application/json' }, body:JSON.stringify({project:saved.state}) });
   assert.equal(duplicate.status,400); assert.match((await duplicate.json()).error,/unique/);
+  saved.state.clips[0].keyframes[1].time=1.4; saved.state.audioClips[0].rate=2;
+  const unsupported = await fetch(base + '/api/render', { method:'POST', headers:{ Origin:base,'X-Cliproom-Request':'1','Content-Type':'application/json' }, body:JSON.stringify({project:saved.state,render_mode:'offline'}) });
+  assert.equal(unsupported.status,422); assert.match((await unsupported.json()).error,/normal speed/);
+  await assert.rejects(call('cliproom_render_project',{project_id:savedProjectId,output:'wrong.mp4',render_mode:'offline'}),/outputs WebM/);
+  const apng = Buffer.from('89504e470d0a1a0a000000006163544c00000000','hex');
+  const upload = await fetch(base + '/api/assets',{method:'POST',headers:{Origin:base,'X-Cliproom-Request':'1','X-File-Type':'image/png','X-File-Name':'animated.png'},body:apng});
+  assert.equal(upload.status,201); const animated = await upload.json();
+  saved.state.audioClips[0].rate=1; saved.state.clips[0].assetId=animated.id;
+  saved.state.assets[0]={...animated,kind:'image',duration:5,width:1,height:1};
+  const animation = await fetch(base + '/api/render',{method:'POST',headers:{Origin:base,'X-Cliproom-Request':'1','Content-Type':'application/json'},body:JSON.stringify({project:saved.state,render_mode:'offline'})});
+  assert.equal(animation.status,422); assert.match((await animation.json()).error,/animated images/);
 });
 test('workspace containment and no-overwrite behavior are enforced', async () => {
   await assert.rejects(call('soundroom_edit',{ input:'../outside.wav',output:'no.wav' }),/inside the configured MCP workspace/);
@@ -197,4 +283,16 @@ test('cancelling a recording stops the job before an output is created', async (
   await new Promise(resolve => setTimeout(resolve, 500));
   const entries = await fs.readdir(work); assert.ok(!entries.some(name => name.startsWith('cancelled.')));
   assert.ok((await call('roomsuite_info')).rooms.includes('captureroom_record_scene'));
+});
+test('cancelling an offline render leaves no output file', async () => {
+  const project = await (await fetch(base + '/api/projects/' + savedProjectId)).json();
+  project.state.clips[0].out = 120;
+  await fs.writeFile(path.join(work,'long-project.json'),JSON.stringify(project));
+  const controller = new AbortController();
+  const pending = client.callTool({name:'cliproom_render_project',arguments:{project_path:'long-project.json',output:'offline-cancelled',render_mode:'offline'}},{signal:controller.signal,timeout:30000});
+  setTimeout(() => controller.abort('cancelled by test'),1800);
+  await assert.rejects(pending);
+  await new Promise(resolve => setTimeout(resolve,500));
+  assert.ok(!(await fs.readdir(work)).some(name => name.startsWith('offline-cancelled.')));
+  assert.equal((await fetch(base + '/api/health')).status,200);
 });

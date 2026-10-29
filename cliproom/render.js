@@ -23,6 +23,7 @@ async function validateProject(input, assetsDirectory) {
     try { meta = JSON.parse(await fs.readFile(path.join(assetsDirectory, asset.id + '.json'), 'utf8')); await fs.access(path.join(assetsDirectory, asset.id)); }
     catch { throw invalid('A project media file is missing.'); }
     if (!String(meta.type || '').startsWith(asset.kind + '/')) throw invalid('Project media type does not match the stored asset.');
+    asset.type = meta.type;
     if (asset.kind !== 'image' && !finite(asset.duration, .001, 86400)) throw invalid('A project asset has an invalid duration.');
     assets.set(asset.id, asset);
   }
@@ -55,7 +56,42 @@ function loadPlaywright() {
   try { return require(require.resolve('playwright', { paths:[path.resolve(__dirname, '..', 'mcp')] })); }
   catch { throw Object.assign(new Error('Headless rendering requires the optional MCP dependencies. Run npm ci --prefix mcp and install Playwright Chromium.'), { status:503 }); }
 }
-async function renderProject(project, { port, suiteMode, signal }) {
+async function stillImage(file) {
+  const handle = await fs.open(file, 'r');
+  try {
+    const header = Buffer.alloc(32), size = (await handle.read(header, 0, header.length, 0)).bytesRead;
+    if (size >= 3 && header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff) return true;
+    if (size >= 12 && header.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) {
+      let offset = 8;
+      for (let i = 0; i < 4096; i++) {
+        const chunk = Buffer.alloc(8), read = await handle.read(chunk, 0, 8, offset);
+        if (read.bytesRead !== 8) return false;
+        const length = chunk.readUInt32BE(0), type = chunk.toString('ascii', 4, 8);
+        if (type === 'acTL' || type === 'fcTL') return false;
+        if (type === 'IDAT') return true;
+        if (type === 'IEND') return false;
+        offset += 12 + length;
+      }
+      return false;
+    }
+    if (size >= 21 && header.toString('ascii',0,4) === 'RIFF' && header.toString('ascii',8,12) === 'WEBP') {
+      const type = header.toString('ascii',12,16);
+      return type === 'VP8 ' || type === 'VP8L' || (type === 'VP8X' && !(header[20] & 2));
+    }
+    return false;
+  } finally { await handle.close(); }
+}
+async function offlineUnavailable(project, assetsDirectory) {
+  const assets = new Map(project.assets.map(asset => [asset.id, asset]));
+  if (timeline.duration(project) > 600) return 'Offline rendering currently supports projects up to 10 minutes.';
+  if (project.audioClips.some(clip => Math.abs(timeline.rate(clip) - 1) > 1e-9)) return 'Offline rendering currently requires audio clips at normal speed. Use realtime mode to preserve retimed audio.';
+  if (project.clips.some(clip => assets.get(clip.assetId)?.kind === 'video' && Math.abs(timeline.rate(clip) - 1) > 1e-9)) return 'Offline rendering currently requires video clips at normal speed. Use realtime mode for retimed video.';
+  for (const id of new Set(project.clips.filter(clip => assets.get(clip.assetId)?.kind === 'image').map(clip => clip.assetId))) {
+    if (!await stillImage(path.join(assetsDirectory, id))) return 'Offline rendering supports still JPEG, PNG and WebP images, but not animated images or AVIF. Use realtime mode for this project.';
+  }
+  return null;
+}
+async function renderProject(project, { port, suiteMode, signal, mode = 'realtime' }) {
   const { chromium } = loadPlaywright();
   const options = { headless:true, args:['--autoplay-policy=no-user-gesture-required'] };
   if (process.env.ROOMSUITE_BROWSER_PATH) options.executablePath = process.env.ROOMSUITE_BROWSER_PATH;
@@ -85,23 +121,36 @@ async function renderProject(project, { port, suiteMode, signal }) {
     });
     const response = await page.goto(origin + (suiteMode ? '/cliproom/' : '/'), { waitUntil:'load', timeout:30000 });
     if (!response?.ok()) throw new Error('Could not open the Cliproom renderer.');
-    const format = await page.evaluate(() => formatSupport());
-    if (!format) throw new Error('Video export is unavailable in the rendering browser.');
     const downloadPromise = page.waitForEvent('download', { timeout });
     downloadPromise.catch(() => {});
-    const started = await page.evaluate(async state => {
-      setState(state, uid(), 0);
-      await exportVideo();
-      return { active:recording || exportPreparing, message:document.querySelector('#toast').textContent || document.querySelector('#exportStatus').textContent };
-    }, project);
-    if (!started.active) { downloadPromise.catch(() => {}); throw new Error(started.message || 'Could not start the Cliproom render.'); }
+    let extension;
+    if (mode === 'offline') {
+      extension = 'webm';
+      await page.evaluate(async state => {
+        setState(state, uid(), 0);
+        const { renderOffline } = await import('/offline-render.js');
+        await renderOffline({ project:state, timeline:T, canvas,
+          prepareImages:async () => Promise.all(state.clips.filter(clip => asset(clip.assetId)?.kind === 'image').map(async clip => { const image = imageFor(asset(clip.assetId)); await image.decode(); })),
+          renderAt:(time, frames) => { currentTime = time; renderFrame(frames); } });
+      }, project);
+    } else {
+      const format = await page.evaluate(() => formatSupport());
+      if (!format) throw new Error('Video export is unavailable in the rendering browser.');
+      extension = format.extension;
+      const started = await page.evaluate(async state => {
+        setState(state, uid(), 0);
+        await exportVideo();
+        return { active:recording || exportPreparing, message:document.querySelector('#toast').textContent || document.querySelector('#exportStatus').textContent };
+      }, project);
+      if (!started.active) throw new Error(started.message || 'Could not start the Cliproom render.');
+    }
     const download = await downloadPromise;
     const failure = await download.failure(); if (failure) throw new Error('Render download failed: ' + failure);
     dir = await fs.mkdtemp(path.join(temporaryRoot, 'roomsuite-render-'));
-    const file = path.join(dir, 'cliproom.' + format.extension);
+    const file = path.join(dir, 'cliproom.' + extension);
     await download.saveAs(file);
     const stat = await fs.stat(file); if (!stat.size) throw new Error('The renderer produced an empty video.');
-    return { file, bytes:stat.size, extension:format.extension, mime:format.extension === 'mp4' ? 'video/mp4' : 'video/webm', cleanup };
+    return { file, bytes:stat.size, extension, mime:extension === 'mp4' ? 'video/mp4' : 'video/webm', cleanup };
   } catch (error) {
     await cleanup();
     if (signal?.aborted) throw Object.assign(new Error('Render cancelled.'), { status:499 });
@@ -114,4 +163,4 @@ async function renderProject(project, { port, suiteMode, signal }) {
     if (browser) await browser.close().catch(() => {});
   }
 }
-module.exports = { validateProject, renderProject };
+module.exports = { validateProject, renderProject, offlineUnavailable };

@@ -445,7 +445,7 @@ function mediaFor(source, clip) {
   return entry;
 }
 function drawCover(source, clip, opacity) {
-  const sw = source.videoWidth || source.naturalWidth, sh = source.videoHeight || source.naturalHeight;
+  const sw = source.videoWidth || source.naturalWidth || source.width, sh = source.videoHeight || source.naturalHeight || source.height;
   if (!sw || !sh) return;
   const boxWidth = canvas.width * clip.scale, boxHeight = canvas.height * clip.scale;
   const centerX = canvas.width * clip.x / 100, centerY = canvas.height * clip.y / 100;
@@ -515,7 +515,7 @@ function updateStageSelection() {
   overlay.setAttribute('aria-label', `Selected ${isTitle ? 'text' : 'picture'}: drag to move`);
   overlay.classList.remove('hidden');
 }
-function renderFrame() {
+function renderFrame(offlineVideoFrames = null) {
   context.fillStyle = '#26252e'; context.fillRect(0, 0, canvas.width, canvas.height);
   const at = currentTime >= totalDuration() && totalDuration() > 0 ? Math.max(0, totalDuration() - .001) : currentTime;
   for (const track of state.videoTracks) {
@@ -524,7 +524,7 @@ function renderFrame() {
     for (const clip of visible) {
       const source = asset(clip.assetId), opacity = T.visualOpacity(state, clip, at), visual = { ...clip, ...T.animatedValues(clip, at) };
       if (source?.kind === 'image') { const img = imageFor(source); if (img.complete && img.naturalWidth) drawCover(img, visual, opacity); }
-      if (source?.kind === 'video') { const el = mediaFor(source, clip).el; if (el.readyState >= 2) drawCover(el, visual, opacity); }
+      if (source?.kind === 'video') { const el = offlineVideoFrames ? offlineVideoFrames.get(clip.id) : mediaFor(source, clip).el; if (el && (offlineVideoFrames || el.readyState >= 2)) drawCover(el, visual, opacity); }
     }
   }
   for (const title of state.titles) if (at >= title.start && at < title.end) drawTitle(title);

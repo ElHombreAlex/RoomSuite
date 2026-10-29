@@ -40,7 +40,7 @@ ROOMSUITE_MCP_WORKSPACE = "/absolute/path/to/agent-media"
 ROOMSUITE_MCP_URL = "http://127.0.0.1:8090"
 ~~~
 
-The longer tool timeout matters because Cliproom renders video in real time. Increase it for longer jobs and set ROOMSUITE_MCP_TIMEOUT_MS if the browser's export timeout also needs to be longer. See [OpenAI's MCP configuration documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+The longer tool timeout matters because Cliproom's default export runs in real time. An optional offline mode is available for supported projects, but its speed depends on the device. Increase the timeout for longer jobs and set ROOMSUITE_MCP_TIMEOUT_MS if the server render timeout also needs to be longer. See [OpenAI's MCP configuration documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 
 Other MCP hosts commonly accept a stdio server entry like this; use the format required by your host:
 
@@ -119,17 +119,22 @@ For example, call `cliproom_render` with the following arguments after creating 
   "output": "moving-cover",
   "name": "Moving cover",
   "save_project": true,
+  "render_mode": "offline",
   "media": [{
     "input": "cover.png", "duration": 5, "scale": 0.6, "x": 25, "y": 50,
     "keyframes": [
-      { "time": 0, "x": 25, "scale": 0.6, "opacity": 0.4 },
-      { "time": 5, "x": 75, "scale": 1, "opacity": 1 }
+      { "timeline_time": 0, "x": 25, "scale": 0.6, "opacity": 0.4 },
+      { "timeline_time": 5, "x": 75, "scale": 1, "opacity": 1 }
     ]
   }]
 }
 ~~~
 
-`x` and `y` are the center position as percentages of canvas width and height; `scale` is a multiplier, and opacity and volume range from 0 to 1. Other animatable properties are `rotation` in degrees and `brightness`, `contrast`, and `saturation` in percent. `fit`, fades, source ranges, speed, tracks and titles remain available. Frames use source-media seconds, the same basis as `source_in` and `source_out`, not timeline seconds. Each property interpolates linearly between frames that set it. If its first frame is after source time zero, the clip's base value acts as an implicit point at zero; after its last frame the value stays constant. This keeps the animation attached to the source through moves, trims, splits and speed changes. Fades multiply animated opacity and volume.
+`x` and `y` are the center position as percentages of canvas width and height; `scale` is a multiplier, and opacity and volume range from 0 to 1. Other animatable properties are `rotation` in degrees and `brightness`, `contrast`, and `saturation` in percent. `fit`, fades, source ranges, speed, tracks and titles remain available.
+
+Use **`timeline_time`** for an absolute time on the project timeline; it must fall within the clip. Alternatively use **`source_time`** for a time in the original media. Specify exactly one per keyframe. The older `time` field remains supported as a legacy alias for `source_time`, so existing agents keep their original behavior; the result includes a warning when it is used. For example, a clip starting at timeline 2 seconds with `source_in: 5` at normal speed can use `timeline_time: 2.5`; it will be stored as source time 5.5. At 2× speed, the same timeline point maps to source time 6. Project JSON and the Cliproom inspector continue to store and display **source seconds**. For a still image, the existing `duration` argument sets its source end time; with a nonzero `source_in`, the timeline length is `(duration - source_in) / speed`.
+
+Each property interpolates linearly between frames that set it. If its first frame is after source time zero, the clip's base value acts as an implicit point at zero; after its last frame the value stays constant. This keeps the animation attached to the source through moves, trims, splits and speed changes. Fades multiply animated opacity and volume.
 
 The saved project returned by `save_project` can be opened and edited in Cliproom. The inspector shows keyframe controls and timeline markers; existing projects load normally and are upgraded to version 4 when saved. An older Cliproom version cannot reopen the upgraded file, so retain a backup if needed.
 
@@ -140,7 +145,9 @@ The saved project returned by `save_project` can be opened and edited in Cliproo
 3. Call `cliproom_save_project` with `project_path: "project.json"` to save a new copy. To update the original, also supply `project_id` and its current `base_revision`. The server rejects stale revisions instead of overwriting a newer edit. Output files are never overwritten.
 4. Call `cliproom_render_project` with `project_id` or `project_path`, plus an output filename stem. It returns the saved video path, size and MIME type. The HTTP endpoint can also be called directly; see [Render from a program](../cliproom/README.md#render-from-a-program).
 
-The render endpoint needs the optional MCP dependencies and Chromium on the **RoomSuite server**, available to the server process's user, even if the MCP client runs on another machine. The endpoint launches a hidden browser and uses Cliproom's existing exporter: rendering happens in real time, depends on browser codecs and available resources, and is not guaranteed to be frame-accurate. Set `CLIPROOM_RENDER_TIMEOUT_MS` on the server and the MCP/host timeouts high enough for longer projects.
+Both Cliproom render tools send the assembled or saved project to the render endpoint; `cliproom_render` only saves a project when `save_project` is true. The endpoint needs the optional MCP dependencies and Chromium on the **RoomSuite server**, available to the server process's user, even if the MCP client runs on another machine. Set `CLIPROOM_RENDER_TIMEOUT_MS` on the server and the MCP/host timeouts high enough for longer projects.
+
+`render_mode` defaults to `realtime`, which uses the existing browser exporter. Set `render_mode: "offline"` on either render tool to encode timeline frames and mix audio without waiting for playback. Offline mode returns **WebM**; omit the output extension or use `.webm`. It supports normal-speed video and audio, still JPEG/PNG/WebP images, titles, tracks, fades and keyframes, for projects up to 10 minutes. Retimed video or audio, animated images and AVIF require realtime mode. Unsupported codecs also return an error suggesting realtime mode. Offline rendering requires compatible Chromium WebCodecs, keeps decoded audio and the output in memory, and may be faster or slower depending on the project and hardware. It uses [Mediabunny](https://github.com/Vanilagy/mediabunny) (MPL-2.0), installed with the MCP dependencies. Imported assets remain on the server in either mode.
 
 ## Verify
 
@@ -150,7 +157,7 @@ After installing the MCP dependencies and browser:
 npm test --prefix mcp
 ~~~
 
-The integration tests start a temporary local RoomSuite server, use a real MCP client over stdio, inspect and produce media through the actual editors, check keyframe editing and motion in a rendered video, and exercise project management, the render endpoint, parallel jobs, cancellation and file boundaries. Set ROOMSUITE_BROWSER_PATH if using a system browser. To include the slower local PixelRoom subject-model check:
+The integration tests start a temporary local RoomSuite server, use a real MCP client over stdio, inspect and produce media, check timeline/source keyframe mapping, rendered motion and audio in both modes, and exercise project management, the render endpoint, parallel jobs, cancellation and file boundaries. Set ROOMSUITE_BROWSER_PATH if using a system browser. To include the slower local PixelRoom subject-model check:
 
 ~~~sh
 ROOMSUITE_MCP_TEST_MODELS=1 npm test --prefix mcp
