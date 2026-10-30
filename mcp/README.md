@@ -82,6 +82,7 @@ The MCP workspace restriction is separate from your agent host's own filesystem 
 | roomsuite_info | Lists capabilities, the resolved workspace and the configured server URL. |
 | roomsuite_list_files | List a workspace directory with file sizes and modification times, using offset/limit pagination. |
 | roomsuite_media_info | Inspect a local image, audio or video file's type, dimensions and duration without uploading it. |
+| roomsuite_preview_image | Return an existing raster image from the MCP workspace as an inline preview for a compatible vision-capable agent. |
 | roomsuite_shared_list, roomsuite_shared_search | Browse a shared folder or search filenames and paths across the server workspace. Search returns at most 200 matches and reports `truncated` if the scan was limited. |
 | roomsuite_shared_upload, roomsuite_shared_download | Transfer a file between the agent's MCP workspace and the server shared workspace; existing destination files are never overwritten. |
 | roomsuite_shared_mkdir, roomsuite_shared_move, roomsuite_shared_delete | Create a folder, move or rename a file/folder, or delete it; folder deletion requires `recursive: true`. |
@@ -89,11 +90,12 @@ The MCP workspace restriction is separate from your agent host's own filesystem 
 | notesroom_create, notesroom_update, notesroom_delete | Create, edit or delete notes. Updates and deletions require the current `base_revision`. |
 | notesroom_folders, notesroom_delete_folder | List or create nested folders, or delete an empty folder. |
 | paintroom_list, paintroom_get | List or read saved PaintRoom projects and their editable layers. |
-| paintroom_create, paintroom_edit | Create artwork with an optional shared image, add shapes or strokes, and change layer transforms using the current revision. |
+| paintroom_create, paintroom_edit | Create artwork, append or update shapes and strokes, remove objects, and change layer transforms using the current revision. Set `include_preview` for an inline image in the same response. |
+| paintroom_preview, paintroom_preview_sheet | Preview one saved project, or compare 2–12 projects in a labeled contact sheet. |
 | paintroom_export | Export a saved project to the MCP workspace as PNG, `.paintroom`, or SVG for artwork without images or eraser strokes. PNG uses a local browser. |
 | pixelroom_edit | Adjust brightness, contrast or saturation; optionally run local subject removal and crop; export PNG, JPEG or WebP. |
 | soundroom_edit | Trim, normalize, change gain, apply fades and export WAV. |
-| vectorroom_create | Create shapes, text and Bézier paths; export SVG, PNG or an editable .vectorroom project. |
+| vectorroom_create, vectorroom_preview | Create shapes, text and Bézier paths; export SVG, PNG or an editable .vectorroom project, or preview a composition without writing a file. `vectorroom_create` also accepts `include_preview`. |
 | captureroom_record_scene | Record a prepared image/text scene as a video. |
 | cliproom_import_media | Upload media to the Cliproom library and return the asset metadata needed in a project. |
 | cliproom_list_projects | List saved projects with IDs and revisions. |
@@ -103,6 +105,28 @@ The MCP workspace restriction is separate from your agent host's own filesystem 
 | cliproom_render_project | Render a saved project ID or workspace project JSON through the server endpoint. |
 
 CaptureRoom's MCP tool does **not** capture a live screen, camera or microphone. Those require a person to grant permission in a browser on the device being captured. The MCP integration does not provide live streaming. Browser codecs, model availability, and device performance still limit exports. Subject removal is approximate and the resulting image should be reviewed.
+
+## Visual feedback for agents
+
+RoomSuite can return a PNG **image content block** alongside the usual text and structured project metadata. The MCP host must pass image blocks through to a vision-capable model; a text-only host or model cannot judge the picture merely because the server returns it. Confirm this with your harness: call `paintroom_preview` or `vectorroom_preview` and check whether the agent actually receives the image, not just JSON or a file path.
+
+For example, create an editable shape and ask for a preview in the same tool call:
+
+~~~json
+{
+  "name": "Horse frame 1",
+  "width": 600,
+  "height": 400,
+  "elements": [{"type":"ellipse","x":120,"y":100,"x2":410,"y2":280,"fill":"#a89472"}],
+  "include_preview": true
+}
+~~~
+
+Inspect the returned image, then call `paintroom_edit` with the returned `project_id`, `base_revision: 1`, `updates: [{"index":0,"x2":440}]`, and `include_preview: true` to adjust that ellipse and see the new result immediately. Indices are zero-based within the chosen layer at the supplied revision. Use `paintroom_get` to inspect layers and their object order, and pass `layer_id` to edit a particular layer; the last layer is used by default. `updates` changes supported fields on existing objects, `remove_indices` removes objects, and `elements` appends new ones. Updates and removals refer to indices **before** removals; conflicting, invalid or stale indices are rejected. The saved project's new revision and the preview are returned together.
+
+Use `paintroom_preview` for a saved project or `paintroom_preview_sheet` with `project_ids` to compare up to 12 frames side by side. The sheet labels the frames and uses white behind transparent areas; individual previews preserve transparency. `vectorroom_preview` previews VectorRoom elements without saving an output file. `roomsuite_preview_image` previews an existing PNG, JPEG, WebP, GIF or AVIF inside the MCP workspace, with a 20 MiB source limit.
+
+Previews are opt-in on create/edit operations to avoid unnecessary browser startup and image payloads. They are rendered locally through the room, bounded in size and returned in memory without creating a preview file. `max_dimension` (or `preview_max_dimension` on create/edit) accepts 256–1536 pixels; default is 1024, or 1536 for contact sheets. This is still a snapshot per call, not a live stream. If a preview fails **after** a create or edit succeeded, the response keeps the saved project ID and revision and reports `preview_error`; retry `paintroom_preview` rather than creating the project again. The same rule applies to a saved VectorRoom output with a failed preview.
 
 For PaintRoom `rect` and `ellipse` elements, a filled shape has no outline unless `color` or `width` is supplied, or `stroke: true` is requested. Use `stroke: false` to suppress an outline explicitly. Unfilled shapes and lines retain their default outlines. VectorRoom's filled rectangles and ellipses also default to no outline; specify `stroke` or `stroke_width` when one is wanted. Existing saved projects keep their stored outlines.
 

@@ -113,4 +113,4 @@ The tests cover the existing timeline and server behavior, suite routes, shared 
 
 ## Coding agents
 
-The optional [RoomSuite MCP server](mcp/README.md) lets coding agents search and transfer shared files, create and organize notes, edit and export PaintRoom artwork, manage Cliproom projects, and produce images, audio and animated videos through the rooms. It runs separately from the normal application and uses isolated browser sessions. Cliproom also offers a [headless project render endpoint](cliproom/README.md#render-from-a-program).
+The optional [RoomSuite MCP server](mcp/README.md) lets coding agents search and transfer shared files, create and organize notes, edit and export PaintRoom artwork, manage Cliproom projects, and produce images, audio and animated videos through the rooms. Image-capable agents can [request inline previews and compare frames](mcp/README.md#visual-feedback-for-agents). It runs separately from the normal application and uses isolated browser sessions. Cliproom also offers a [headless project render endpoint](cliproom/README.md#render-from-a-program).

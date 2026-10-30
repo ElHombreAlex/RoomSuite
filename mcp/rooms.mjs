@@ -5,6 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
 import T from '../cliproom/public/timeline.js';
 import { inputPath, outputPath, saveDownload, saveResponse } from './files.mjs';
+import { attachPreview, previewOnPage } from './preview.mjs';
 
 const configuredUrl = process.env.ROOMSUITE_MCP_URL || 'http://127.0.0.1:8090';
 const requestedTimeout = Number(process.env.ROOMSUITE_MCP_TIMEOUT_MS || 600000);
@@ -220,16 +221,23 @@ function vectorObject(element) {
   }
   return item;
 }
+async function loadVectorElements(page,elements){
+  const project={format:'vectorroom',version:1,objects:elements.map(vectorObject)};
+  await page.locator('#openProject').setInputFiles({name:'agent.vectorroom',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(project))});
+  await page.waitForFunction(()=>document.querySelector('#status').textContent.length>0,null,{timeout:30000});
+  if(await page.locator('#status').evaluate(el=>el.classList.contains('error')))throw new Error(await page.locator('#status').textContent());
+}
+export async function previewVector(args,signal){return withRoom('/vectorroom/','VectorRoom',signal,async page=>{await loadVectorElements(page,args.elements);return attachPreview({room:'VectorRoom',operation:'preview_vector'},await previewOnPage(page,{kind:'vector',maxDimension:args.max_dimension}));});}
 export async function createVector(args, signal) {
   const ext = path.extname(args.output).toLowerCase(), out = await outputPath(args.output, ['.svg','.png','.vectorroom']);
   return withRoom('/vectorroom/', 'VectorRoom', signal, async page => {
-    const project = { format:'vectorroom', version:1, objects:args.elements.map(vectorObject) };
-    await page.locator('#openProject').setInputFiles({ name:'agent.vectorroom', mimeType:'application/json', buffer:Buffer.from(JSON.stringify(project)) });
-    await page.waitForFunction(() => document.querySelector('#status').textContent.length > 0, null, { timeout:30000 });
-    if (await page.locator('#status').evaluate(el => el.classList.contains('error'))) throw new Error(await page.locator('#status').textContent());
+    await loadVectorElements(page,args.elements);
     const button = ext === '.svg' ? '#exportSvg' : ext === '.png' ? '#exportPng' : '#save';
     const result = await downloadTo(page, button, out, mimeByExt[ext]);
-    return { ...result, room:'VectorRoom', operation:'create_vector', width:1000, height:700 };
+    const output={ ...result, room:'VectorRoom', operation:'create_vector', width:1000, height:700 };
+    if(!args.include_preview)return output;
+    try{return attachPreview(output,await previewOnPage(page,{kind:'vector',maxDimension:args.preview_max_dimension}));}
+    catch(error){return {...output,preview_error:'The file was saved, but preview failed: '+error.message};}
   });
 }
 

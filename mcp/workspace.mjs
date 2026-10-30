@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { inputPath, outputPath, saveResponse, saveDownload } from './files.mjs';
 import { serverUrl, withRoom } from './rooms.mjs';
 import PaintModel from '../PaintRoom/model.js';
+import { attachPreview, previewOnPage } from './preview.mjs';
 
 async function request(route, { method='GET', body, signal, headers={} } = {}) {
   const origin=serverUrl(), response=await fetch(origin+route,{method,signal,headers:{...(method==='GET'?{}:{Origin:origin,'X-Cliproom-Request':'1'}),...headers},...(body===undefined?{}:{body}),...(body && typeof body.pipe==='function'?{duplex:'half'}:{})});
@@ -49,7 +50,7 @@ export async function paintCreate(args,signal){
   if(args.transparent)state.background=null;
   if(args.shared_image){state.layers[0].name='Image';state.layers[0].objects.push(await sourceImage(args.shared_image,state,signal));state.layers.push(PaintModel.layer(crypto.randomUUID(),'Drawing'));}
   state.layers.at(-1).objects.push(...(args.elements||[]).map(object));PaintModel.validate(state);
-  const saved=await json('/api/paint/projects/'+id,'PUT',{baseRevision:0,state},signal);return {project_id:id,revision:saved.revision,name:state.name,url:serverUrl()+'/paintroom/?'+new URLSearchParams({project:id})};
+  const saved=await json('/api/paint/projects/'+id,'PUT',{baseRevision:0,state},signal),result={project_id:id,revision:saved.revision,name:state.name,url:serverUrl()+'/paintroom/?'+new URLSearchParams({project:id})};return optionalPaintPreview(result,saved,args,signal);
 }
 export async function paintEdit(args,signal){
   const project=await json('/api/paint/projects/'+args.project_id,'GET',undefined,signal);if(project.revision!==args.base_revision)throw new Error('This PaintRoom project changed on another device.');
@@ -57,9 +58,19 @@ export async function paintEdit(args,signal){
   if(args.new_layer){target=PaintModel.layer(crypto.randomUUID(),args.new_layer);state.layers.push(target);}else if(!target)target=state.layers.at(-1);
   if(args.layer_id&&!state.layers.some(l=>l.id===args.layer_id))throw new Error('Layer not found.');
   if(args.name!==undefined)state.name=args.name;if(args.transform)Object.assign(target,args.transform);
+  const allowed={stroke:['points','color','width','opacity','erase'],rect:['x','y','x2','y2','width','color','fill','stroke','opacity'],ellipse:['x','y','x2','y2','width','color','fill','stroke','opacity'],line:['x','y','x2','y2','width','color','opacity'],image:['x','y','width','height','opacity']},changed=new Set(),removed=new Set();
+  for(const update of args.updates||[]){const {index,...values}=update,item=target.objects[index];if(!item||changed.has(index))throw new Error('Object update index is invalid or duplicated: '+index);const keys=Object.keys(values);if(!keys.length||keys.some(key=>!allowed[item.type]?.includes(key)))throw new Error('Unsupported fields for '+item.type+' at index '+index+'.');Object.assign(item,values);changed.add(index);}
+  for(const index of args.remove_indices||[]){if(!target.objects[index]||removed.has(index)||changed.has(index))throw new Error('Object removal index is invalid, duplicated or also updated: '+index);removed.add(index);}
+  if(removed.size)target.objects=target.objects.filter((_,index)=>!removed.has(index));
   target.objects.push(...(args.elements||[]).map(object));PaintModel.validate(state);
-  const saved=await json('/api/paint/projects/'+args.project_id,'PUT',{baseRevision:args.base_revision,state},signal);return {project_id:saved.id,revision:saved.revision,layer_id:target.id,name:state.name};
+  const saved=await json('/api/paint/projects/'+args.project_id,'PUT',{baseRevision:args.base_revision,state},signal),result={project_id:saved.id,revision:saved.revision,layer_id:target.id,name:state.name};return optionalPaintPreview(result,saved,args,signal);
 }
+async function renderPaintProjects(projects,kind,maxDimension,columns,signal){return withRoom('/paintroom/','PaintRoom',signal,page=>previewOnPage(page,{kind,projects,maxDimension,columns}));}
+async function optionalPaintPreview(result,project,args,signal){if(!args.include_preview)return result;try{return attachPreview(result,await renderPaintProjects([project],'paint',args.preview_max_dimension,undefined,signal));}catch(error){return {...result,preview_error:'The project was saved, but preview failed: '+error.message};}}
+export async function paintPreview(args,signal){const project=await json('/api/paint/projects/'+args.project_id,'GET',undefined,signal);return attachPreview({project_id:project.id,revision:project.revision,name:project.state.name},await renderPaintProjects([project],'paint',args.max_dimension,undefined,signal));}
+export async function paintPreviewSheet(args,signal){const projects=[];let bytes=0;for(const id of args.project_ids){const project=await json('/api/paint/projects/'+id,'GET',undefined,signal);bytes+=Buffer.byteLength(JSON.stringify(project));if(bytes>48*1024*1024)throw new Error('Projects are too large to preview together; use smaller batches.');projects.push(project);}const preview=await renderPaintProjects(projects,'sheet',args.max_dimension||1536,args.columns,signal);return attachPreview({projects:projects.map(p=>({project_id:p.id,revision:p.revision,name:p.state.name}))},preview);}
+export async function previewImage(args,signal){const file=await inputPath(args.input),extension=path.extname(file).toLowerCase();if(!['.png','.jpg','.jpeg','.webp','.gif','.avif'].includes(extension))throw new Error('Choose a PNG, JPEG, WebP, GIF or AVIF image.');const stat=await fs.stat(file);if(stat.size>20*1024*1024)throw new Error('Images must be 20 MB or smaller to preview.');
+  return withRoom('/paintroom/','PaintRoom',signal,async page=>{await page.evaluate(()=>{const input=document.createElement('input');input.type='file';input.id='roomsuitePreviewFile';document.body.append(input);});await page.locator('#roomsuitePreviewFile').setInputFiles(file);return attachPreview({name:path.basename(file)},await previewOnPage(page,{kind:'file',maxDimension:args.max_dimension}));});}
 export async function paintGet(args,signal){return {project:await json('/api/paint/projects/'+args.project_id,'GET',undefined,signal)};}
 export async function paintList(args,signal){return json('/api/paint/projects','GET',undefined,signal);}
 export async function paintExport(args,signal){

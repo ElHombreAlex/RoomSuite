@@ -2,9 +2,10 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import * as z from 'zod/v4';
 import { workspace, listFiles } from './files.mjs';
-import { serverUrl, editImage, editAudio, createVector, recordScene, renderVideo, renderSavedProject, inspectMedia, importCliproomMedia } from './rooms.mjs';
+import { serverUrl, editImage, editAudio, createVector, previewVector, recordScene, renderVideo, renderSavedProject, inspectMedia, importCliproomMedia } from './rooms.mjs';
 import { listProjects, getProject, saveProject } from './projects.mjs';
 import { registerWorkspace } from './register-workspace.mjs';
+import { imageContent } from './preview.mjs';
 
 const file = z.string().min(1).max(4096).describe('Path relative to the MCP workspace, or an absolute path inside it.');
 const color = z.string().regex(/^#[0-9a-f]{6}$/i).describe('Six-digit hex color, such as #ffffff.');
@@ -46,7 +47,7 @@ const media = z.object({
     .describe('Set exactly one of timeline_time, source_time, or the legacy time on each keyframe. Properties interpolate linearly.'),
   fade_in:seconds.optional(), fade_out:seconds.optional()
 });
-function result(data) { return { content:[{ type:'text', text:JSON.stringify(data) }], structuredContent:data }; }
+function result(data) { const {[imageContent]:images,...structured}=data;return { content:[{ type:'text', text:JSON.stringify(structured) },...(images || [])], structuredContent:structured }; }
 function handler(fn) {
   return async (args, context) => {
     const request = context?.mcpReq, token = request?._meta?.progressToken;
@@ -72,7 +73,7 @@ function buildServer() {
     annotations:{ readOnlyHint:true, destructiveHint:false, openWorldHint:false }
   }, handler(async () => ({
     workspace:await workspace(), server_url:serverUrl(),
-    rooms:['roomsuite_list_files','roomsuite_media_info','roomsuite_shared_list','roomsuite_shared_search','roomsuite_shared_upload','roomsuite_shared_download','roomsuite_shared_mkdir','roomsuite_shared_move','roomsuite_shared_delete','notesroom_list','notesroom_get','notesroom_create','notesroom_update','notesroom_delete','notesroom_folders','notesroom_delete_folder','paintroom_list','paintroom_get','paintroom_create','paintroom_edit','paintroom_export','pixelroom_edit','soundroom_edit','vectorroom_create','captureroom_record_scene','cliproom_import_media','cliproom_list_projects','cliproom_get_project','cliproom_save_project','cliproom_render','cliproom_render_project'],
+    rooms:['roomsuite_list_files','roomsuite_media_info','roomsuite_preview_image','roomsuite_shared_list','roomsuite_shared_search','roomsuite_shared_upload','roomsuite_shared_download','roomsuite_shared_mkdir','roomsuite_shared_move','roomsuite_shared_delete','notesroom_list','notesroom_get','notesroom_create','notesroom_update','notesroom_delete','notesroom_folders','notesroom_delete_folder','paintroom_list','paintroom_get','paintroom_create','paintroom_edit','paintroom_preview','paintroom_preview_sheet','paintroom_export','pixelroom_edit','soundroom_edit','vectorroom_create','vectorroom_preview','captureroom_record_scene','cliproom_import_media','cliproom_list_projects','cliproom_get_project','cliproom_save_project','cliproom_render','cliproom_render_project'],
     notes:['Input and output files must be inside the configured MCP workspace; existing output files are never overwritten.', 'Editor-based tools use isolated headless browser sessions.', 'Cliproom imports media into the server library; it remains there after the call.', 'Updating a saved Cliproom project requires its current revision.', 'CaptureRoom live screen, camera and microphone access require an interactive user and are not exposed by this MCP server.']
   })));
   server.registerTool('roomsuite_list_files', {
@@ -135,10 +136,15 @@ function buildServer() {
   }, handler(editAudio));
   server.registerTool('vectorroom_create', {
     title:'Create artwork with VectorRoom',
-    description:'Create a 1000 by 700 vector composition from shapes, text and Bézier paths. Export .svg, .png, or an editable .vectorroom project. Path in/out coordinates are absolute control points.',
-    inputSchema:z.object({ output:file.describe('New output path ending in .svg, .png, or .vectorroom.'), elements:z.array(vectorElement).min(1).max(1000) }),
+    description:'Create a 1000 by 700 vector composition from shapes, text and Bézier paths. Export .svg, .png, or an editable .vectorroom project. Set include_preview to receive an image in the same response. Path in/out coordinates are absolute control points.',
+    inputSchema:z.object({ output:file.describe('New output path ending in .svg, .png, or .vectorroom.'), elements:z.array(vectorElement).min(1).max(1000), include_preview:z.boolean().optional(),preview_max_dimension:z.number().int().min(256).max(1536).optional() }),
     outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(createVector));
+  server.registerTool('vectorroom_preview', {
+    title:'Preview VectorRoom artwork',description:'Render shapes, text and paths as an inline PNG image without writing an output file. Requires an image-capable MCP client and model to inspect visually.',
+    inputSchema:z.object({elements:z.array(vectorElement).min(1).max(1000),max_dimension:z.number().int().min(256).max(1536).optional()}),
+    outputSchema:z.object({room:z.literal('VectorRoom'),operation:z.literal('preview_vector'),preview:z.object({width:z.number(),height:z.number(),bytes:z.number(),mime_type:z.literal('image/png')})}),annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}
+  },handler(previewVector));
   server.registerTool('captureroom_record_scene', {
     title:'Record a prepared CaptureRoom scene',
     description:'Record a static scene containing an image and/or wrapped text. Images fit the frame by default; choose contain, cover, or explicit placement. This tool does not capture a screen, camera or microphone. The output extension is chosen by the browser.',
