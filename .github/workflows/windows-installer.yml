@@ -26,7 +26,7 @@ jobs:
       - name: Install browser for Office and MCP tests
         run: node mcp/node_modules/playwright/cli.js install chromium --only-shell
       - name: Test Office and agent workflows
-        run: node --test --test-concurrency=1 mcp/tests/office-ui.test.mjs mcp/tests/productivity.test.mjs mcp/tests/productivity-ui.test.mjs
+        run: node --test --test-concurrency=1 mcp/tests/office-ui.test.mjs mcp/tests/productivity.test.mjs mcp/tests/productivity-ui.test.mjs mcp/tests/calendar-startup.test.mjs mcp/tests/notes-media-ui.test.mjs mcp/tests/deployment.test.mjs
       - name: Build the installer
         shell: pwsh
         run: ./windows/build-installer.ps1

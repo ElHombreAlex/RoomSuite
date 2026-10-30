@@ -73,3 +73,11 @@ test('PaintRoom projects can be saved and reopened without overwriting newer edi
   assert.equal((await request(route,'DELETE',{baseRevision:1})).status,200);
   assert.equal((await request(route)).status,404);
 });
+
+test('note media streams only supported shared file types with sandboxed responses',async()=>{
+  const png=Buffer.from('89504e470d0a1a0a0000000d49484452','hex');assert.equal((await upload('note-image.png',png)).status,201);
+  const media=await request('/api/workspace/media?path=note-image.png');assert.equal(media.status,200);assert.equal(media.headers.get('content-type'),'image/png');assert.match(media.headers.get('content-security-policy'),/sandbox/);assert.equal(media.headers.get('x-content-type-options'),'nosniff');assert.deepEqual(Buffer.from(await media.arrayBuffer()),png);
+  const range=await request('/api/workspace/media?path=note-image.png','GET',undefined,{Range:'bytes=0-3'});assert.equal(range.status,206);assert.deepEqual(Buffer.from(await range.arrayBuffer()),png.subarray(0,4));
+  assert.equal((await upload('not-safe.svg','<svg></svg>')).status,201);assert.equal((await request('/api/workspace/media?path=not-safe.svg')).status,415);assert.equal((await request('/api/workspace/media?'+new URLSearchParams({path:'../escape.png'}))).status,400);
+  assert.equal((await request('/api/workspace/delete','POST',{path:'note-image.png'})).status,200);assert.equal((await request('/api/workspace/delete','POST',{path:'not-safe.svg'})).status,200);
+});

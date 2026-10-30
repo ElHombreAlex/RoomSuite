@@ -10,7 +10,7 @@ import { elementArray, updateArray } from './paint-schema.mjs';
 
 async function request(route, { method='GET', body, signal, headers={} } = {}) {
   const origin=serverUrl(), response=await fetch(origin+route,{method,signal,headers:{...(method==='GET'?{}:{Origin:origin,'X-Cliproom-Request':'1'}),...headers},...(body===undefined?{}:{body}),...(body && typeof body.pipe==='function'?{duplex:'half'}:{})});
-  if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.error || 'RoomSuite request failed ('+response.status+').');}
+  if(!response.ok){const result=await response.json().catch(()=>({}));throw Object.assign(new Error(result.error || 'RoomSuite request failed ('+response.status+').'),{status:response.status});}
   return response;
 }
 async function json(route,method='GET',data,signal){return (await request(route,{method,signal,...(data===undefined?{}:{headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})})).json();}

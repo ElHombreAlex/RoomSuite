@@ -1,11 +1,13 @@
 {
   "name": "roomsuite",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "description": "A self-hosted creative and productivity workspace",
   "scripts": {
     "start": "node server.js",
     "test": "node --test cliproom/tests/*.test.js tests/*.test.js"
   },
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  }
 }

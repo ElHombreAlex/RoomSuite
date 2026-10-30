@@ -45,6 +45,10 @@ async function scenario(temp, mode) {
       await fs.writeFile(path.join(data,'data','before-upgrade.txt'),'keep');
       run(installer,['/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOICONS','/SP-',`/GROUP=${group}`,`/DIR=${dir}`,'/TYPE=full',`/LOG=${path.join(temp,'upgrade.log')}`]);
       await fs.access(path.join(mcpDir,'playwright','package.json'));await fs.access(path.join(dir,'browsers'));assert.equal(await fs.readFile(path.join(data,'data','before-upgrade.txt'),'utf8'),'keep');
+      const upgraded=await launchNode(dir,{...env,CLIPROOM_DATA:path.join(data,'data','cliproom'),ROOMSUITE_DATA:path.join(data,'data','workspace')});
+      const upgradeClient=new Client({name:'installer-upgrade-check',version:'2.1.0'});
+      try{await upgradeClient.connect(new StdioClientTransport({command:path.join(dir,'runtime','node.exe'),args:[path.join(dir,'mcp','server.mjs')],env:{...env,ROOMSUITE_MCP_WORKSPACE:workspace,ROOMSUITE_MCP_URL:`http://127.0.0.1:${portNumber}`},stderr:'pipe'}));const checked=await request(upgradeClient,'roomsuite_check_deployment',{});assert.equal(checked.structuredContent.ok,true,checked.structuredContent.issues.join('; '));}
+      finally{await upgradeClient.close().catch(()=>{});await stop(upgraded);}
     }
     if(mode==='full'){
       const serverEnv={...env,CLIPROOM_DATA:path.join(data,'data','cliproom'),ROOMSUITE_DATA:path.join(data,'data','workspace')},server=await launchNode(dir,serverEnv);
@@ -52,6 +56,7 @@ async function scenario(temp, mode) {
       try {
         const configPath=path.join(data,'mcp-config.json');run(path.join(dir,'RoomSuite.exe'),['--export-mcp-config',configPath],env);const config=JSON.parse(await fs.readFile(configPath,'utf8')).mcpServers.roomsuite;assert.equal(config.command,path.join(dir,'runtime','node.exe'));assert.deepEqual(config.args,[path.join(dir,'mcp','server.mjs')]);assert.equal(config.env.ROOMSUITE_MCP_WORKSPACE,workspace);assert.equal(config.env.ROOMSUITE_MCP_URL,`http://127.0.0.1:${portNumber}`);assert.equal(config.env.PLAYWRIGHT_BROWSERS_PATH,path.join(dir,'browsers'));
         await client.connect(new StdioClientTransport({command:config.command,args:config.args,env:{...serverEnv,...config.env},stderr:'pipe'}));
+        const checked=await request(client,'roomsuite_check_deployment',{});assert.equal(checked.structuredContent.ok,true,checked.structuredContent.issues.join('; '));
         await request(client,'docsuite_create',{path:'installer.docsuite',title:'Installer document',text:'Office compatibility'});const word=await request(client,'docsuite_export_docx',{path:'installer.docsuite',output:'installer.docx'});assert.ok(word.structuredContent.bytes>1000);
         await request(client,'gridsuite_create',{path:'installer.gridsuite',title:'Installer workbook',cells:{A1:'12',A2:'=A1*2'}});const excel=await request(client,'gridsuite_export_xlsx',{path:'installer.gridsuite',output:'installer.xlsx'});assert.ok(excel.structuredContent.bytes>1000);
         await request(client,'decksuite_create',{path:'installer.decksuite',title:'Installer presentation'});const powerpoint=await request(client,'decksuite_export_pptx',{path:'installer.decksuite',output:'installer.pptx'});assert.ok(powerpoint.structuredContent.bytes>1000);

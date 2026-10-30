@@ -71,3 +71,18 @@ test('failed reminders retry and deleted events are not sent',async()=>{
     state.events=[{...state.events[0],id:'deleted'}];await fs.writeFile(file,JSON.stringify(state));await fs.unlink(file);assert.equal((await reminders.tick(Date.parse('2026-05-01T09:47:00Z'))).sent,0);assert.equal(attempts,2);
   }finally{const actual=await fs.realpath(tmp),parent=await fs.realpath(os.tmpdir());assert.equal(path.dirname(actual),parent);assert.ok(path.basename(actual).startsWith('roomsuite-reminder-test-'));await fs.rm(actual,{recursive:true,force:true});}
 });
+
+test('v2.1 data survives validation and old files acquire safe defaults',()=>{
+  const doc=Model.validate({format:'roomsuite-document',version:1,title:'Old',html:'<p>Text</p>'},'docsuite');assert.deepEqual(doc.comments,[]);
+  doc.comments.push({id:'comment-1',text:'Review this',quote:'Text',author:'',resolved:false});assert.equal(Model.validate(doc,'docsuite').comments[0].quote,'Text');
+  assert.throws(()=>Model.validate({...doc,comments:[...doc.comments,doc.comments[0]]},'docsuite'),/unique/);
+  const grid=Model.empty('gridsuite',()=> 'id');grid.cells.A1='12';grid.styles={A1:{bold:true,color:'#123456',fill:'#abcdef',size:14,align:'right'}};grid.filter={column:'A',query:'12'};
+  const saved=Model.validate(grid,'gridsuite');assert.deepEqual(saved.sheets[0].styles.A1,grid.styles.A1);assert.deepEqual(saved.sheets[0].filter,grid.filter);assert.throws(()=>Model.validate({...grid,filter:{column:'ZZ',query:'x'}},'gridsuite'),/outside/);
+  const deck=Model.empty('decksuite',()=> 'slide');deck.slides[0].layout=Model.slideLayouts.split;assert.deepEqual(Model.validate(deck,'decksuite').slides[0].layout,Model.slideLayouts.split);assert.throws(()=>Model.validate({...deck,slides:[{...deck.slides[0],layout:{...Model.slideLayouts.split,title:{x:1,y:0,w:.2,h:.2}}}]},'decksuite'),/position/);
+});
+test('series edits and deletions leave unrelated events and occurrences intact',()=>{
+  const events=[{id:'one',seriesId:'s',title:'Call',start:'2026-10-25T08:00:00Z',end:'2026-10-25T09:00:00Z',description:'',remindMinutes:null},{id:'two',seriesId:'s',title:'Call',start:'2026-11-01T09:00:00Z',end:'2026-11-01T10:00:00Z',description:'',remindMinutes:null},{id:'other',title:'Other',start:'2026-11-01T12:00:00Z',end:'2026-11-01T13:00:00Z',description:'',remindMinutes:null}];
+  const one=Calendar.update(events,'one',{title:'Changed'},'occurrence');assert.equal(one[0].title,'Changed');assert.equal(one[1].title,'Call');
+  const all=Calendar.update(events,'one',{title:'Team call',start:'2026-10-25T08:30:00Z',end:'2026-10-25T09:30:00Z'},'series');assert.equal(all[1].title,'Team call');assert.equal(all[1].start,'2026-11-01T09:30:00.000Z');assert.equal(all[2].title,'Other');assert.deepEqual(Calendar.remove(all,'two','series').map(e=>e.id),['other']);
+  assert.throws(()=>Calendar.update(events,'missing',{},'series'),/not found/);
+});

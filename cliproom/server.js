@@ -18,6 +18,8 @@ const ASSETS = path.join(DATA, 'assets');
 const PUBLIC = path.join(__dirname, 'public');
 const SUITE_MODE = process.env.ROOMSUITE_MODE === '1';
 const SUITE_ROOT = path.resolve(__dirname, '..');
+const suiteVersion = SUITE_MODE ? require('../version') : null;
+const startupVersion = suiteVersion ? suiteVersion.snapshot() : null;
 const MAX_MEDIA = 2 * 1024 * 1024 * 1024;
 const MAX_PROJECT = 2 * 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -121,7 +123,8 @@ async function route(req, res) {
     }
   }
   if (sharedWorkspace && await sharedWorkspace.route(req,res,url)) return;
-  if (req.method === 'GET' && pathname === '/api/health') return json(res, 200, { ok: true });
+  if (req.method === 'GET' && pathname === '/api/health') return json(res, 200, { ok: true, ...(startupVersion?{version:startupVersion.version}: {}) });
+  if (SUITE_MODE && req.method === 'GET' && pathname === '/api/version') {const current=suiteVersion.snapshot();return json(res,200,{version:startupVersion.version,startup:startupVersion,current});}
   if ((req.method === 'GET' || req.method === 'HEAD') && pathname === '/api/render/mediabunny.mjs') {
     const bundle = path.join(SUITE_ROOT, 'mcp', 'node_modules', 'mediabunny', 'dist', 'bundles', 'mediabunny.min.mjs');
     try { await fsp.access(bundle); } catch { throw error(503, 'Offline rendering requires the optional MCP dependencies. Run npm ci --prefix mcp.'); }

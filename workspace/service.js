@@ -182,6 +182,12 @@ function createWorkspace({ dataDir, checkWrite, json, sendFile }) {
       res.setHeader('Content-Disposition', "attachment; filename*=UTF-8''" + encodeURIComponent(path.basename(file)));
       await sendFile(req,res,file,'application/octet-stream',true); return true;
     }
+    if (p === '/api/workspace/media' && ['GET','HEAD'].includes(req.method)) {
+      const clean=relative(url.searchParams.get('path') || ''),type={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.webm':'audio/webm','.ogg':'audio/ogg','.mp3':'audio/mpeg','.wav':'audio/wav','.m4a':'audio/mp4','.mp4':'audio/mp4'}[path.extname(clean).toLowerCase()];
+      if(!type)throw fail(415,'This file cannot be displayed as note media.');
+      const file=await existing(clean);if(!(await fsp.stat(file)).isFile())throw fail(400,'Choose a media file.');
+      await sendFile(req,res,file,type,true);return true;
+    }
     if (p === '/api/workspace/upload' && req.method === 'POST') {
       checkWrite(req); const destination = relative(url.searchParams.get('path') || '');
       const length = Number(req.headers['content-length'] || 0); if (length > maxFile) throw fail(413, 'File exceeds the upload limit.');

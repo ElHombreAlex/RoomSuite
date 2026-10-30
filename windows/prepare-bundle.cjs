@@ -6,7 +6,7 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const dest = path.resolve(process.argv[2] || '');
 if (!process.argv[2] || fs.existsSync(dest)) throw new Error('Provide a new staging directory.');
-const include = ['server.js','package.json','README.md','CaptureRoom','cliproom','FilesRoom','mcp','NotesRoom','PaintRoom','PixelRoom','ProductivitySuite','SoundRoom','suite','VectorRoom','workspace'];
+const include = ['server.js','version.js','package.json','README.md','CaptureRoom','cliproom','FilesRoom','mcp','NotesRoom','PaintRoom','PixelRoom','ProductivitySuite','SoundRoom','suite','VectorRoom','workspace'];
 for (const entry of include) { const source=path.join(root,entry),relative=path.relative(source,dest);if (fs.statSync(source).isDirectory() && (relative==='' || (!path.isAbsolute(relative) && relative!=='..' && !relative.startsWith('..'+path.sep)))) throw new Error('Staging must be outside the application source folders.'); }
 const skip = new Set(['.git','.qa','.preview-data','node_modules']);
 function permitted(source) {

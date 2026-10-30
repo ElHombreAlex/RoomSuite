@@ -58,6 +58,26 @@ namespace RoomSuiteWindows {
       if (await Task.WhenAny(started.Task, Task.Delay(20000)) != started.Task) { Stop(); throw new TimeoutException("RoomSuite did not start in time."); }
       await started.Task;
       if (process.HasExited) throw new InvalidOperationException("RoomSuite stopped while starting.");
+      if (Settings.HasMcp) { try { await CheckDeployment(); } catch { Stop(); throw; } }
+    }
+    private static async Task CheckDeployment() {
+      string script = Path.Combine(Settings.App, "mcp", "check-deployment.mjs");
+      if (!File.Exists(script)) throw new IOException("RoomSuite's deployment checker is missing. Run the installer again.");
+      var output = new StringBuilder();
+      using (var check = new Process()) {
+        check.StartInfo = new ProcessStartInfo(Settings.Node, "\"" + script + "\"") { WorkingDirectory = Settings.App, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        check.StartInfo.EnvironmentVariables["ROOMSUITE_MCP_URL"] = Settings.Url.TrimEnd('/');
+        check.StartInfo.EnvironmentVariables["ROOMSUITE_MCP_WORKSPACE"] = Settings.Workspace;
+        check.StartInfo.EnvironmentVariables["PLAYWRIGHT_BROWSERS_PATH"] = Settings.Browser;
+        check.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e) { if (e.Data != null) lock (output) { if (output.Length < 8000) output.AppendLine(e.Data); } };
+        check.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e) { if (e.Data != null) lock (output) { if (output.Length < 8000) output.AppendLine(e.Data); } };
+        if (!check.Start()) throw new InvalidOperationException("Could not start the RoomSuite deployment check.");
+        check.BeginOutputReadLine(); check.BeginErrorReadLine();
+        var finished = Task.Run(() => check.WaitForExit());
+        if (await Task.WhenAny(finished, Task.Delay(120000)) != finished) { try { check.Kill(); } catch (InvalidOperationException) { } throw new TimeoutException("RoomSuite's deployment check timed out."); }
+        await finished;
+        if (check.ExitCode != 0) { string detail; lock (output) detail = output.ToString(); throw new InvalidOperationException("RoomSuite's backend, frontend and MCP files do not match. Restart RoomSuite and reinstall if needed. " + detail); }
+      }
     }
     private static string DataPath(string name) { return Path.Combine(Settings.Data, "data", name); }
     internal void Stop() { stopping = true; if (process == null) return; try { if (!process.HasExited) { process.Kill(); process.WaitForExit(5000); } } catch (InvalidOperationException) { } }

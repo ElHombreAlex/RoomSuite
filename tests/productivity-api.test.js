@@ -17,7 +17,7 @@ after(async()=>{if(server&&server.exitCode===null){server.kill();await new Promi
 test('productivity files appear in shared storage and reject stale or unsafe updates',async()=>{
   for(const [kind,ext] of [['docsuite','docsuite'],['gridsuite','gridsuite'],['decksuite','decksuite'],['plansuite','plansuite']]){
     const file='test.'+ext,state=Model.empty(kind,()=> 'id');const created=await put(file,null,state);assert.equal(created.status,200,kind);const saved=await created.json();assert.match(saved.revision,/^[a-f0-9]{64}$/);
-    assert.equal((await put(file,null,state)).status,409);const changed={...state,title:'Changed'};const updated=await put(file,saved.revision,changed);assert.equal(updated.status,200);assert.equal((await put(file,saved.revision,state)).status,409);
+    assert.equal((await put(file,null,state)).status,409);const changed={...state,title:'Changed'};const updated=await put(file,saved.revision,changed);assert.equal(updated.status,200,await updated.text());assert.equal((await put(file,saved.revision,state)).status,409);
     const fetched=await (await fetch(base+route(file))).json();assert.equal(fetched.state.title,'Changed');
   }
   const list=await (await fetch(base+'/api/workspace/list?path=')).json();assert.equal(list.entries.length,4);
