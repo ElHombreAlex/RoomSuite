@@ -1,0 +1,42 @@
+name: Windows installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: mcp/package-lock.json
+      - name: Install MCP build dependencies
+        run: npm ci --prefix mcp
+      - name: Build the installer
+        shell: pwsh
+        run: ./windows/build-installer.ps1
+      - name: Test the installer and optional MCP component
+        shell: pwsh
+        run: node windows/installer-smoke.cjs dist/RoomSuite-Setup.exe "$env:RUNNER_TEMP/roomsuite-tests"
+      - name: Record the installer checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash dist/RoomSuite-Setup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  RoomSuite-Setup.exe" | Set-Content dist/SHA256SUMS.txt -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RoomSuite-Windows
+          path: |
+            dist/RoomSuite-Setup.exe
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 90

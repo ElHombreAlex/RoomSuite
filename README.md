@@ -13,9 +13,32 @@ RoomSuite is a self-hosted workspace for creative work, notes and shared files. 
 
 Sessions are separate for each tab, and there is no application-imposed limit on the number of open rooms. Available memory, camera access, browser behavior and device performance still affect how many can be used at once.
 
-## Start RoomSuite
+## Windows setup
 
-Install Node.js 18 or later and Git. No npm packages or build step are required:
+The Windows installer supports x64-compatible Windows 10 and 11. It installs for the current user without administrator rights and includes its own Node.js runtime. The optional MCP browser follows [Playwright's system requirements](https://playwright.dev/docs/intro#system-requirements), which currently list Windows 11 or newer; it may work on Windows 10 but is not guaranteed there.
+
+1. Download the `RoomSuite-Windows` artifact from the latest successful [Windows installer workflow](https://github.com/ElHombreAlex/RoomSuite/actions/workflows/windows-installer.yml), unzip it, and open `RoomSuite-Setup.exe`. GitHub requires sign-in to download Actions artifacts. See [building the installer](windows/README.md) to make it from source. The installer is not code-signed, so Windows may display an unfamiliar-publisher warning.
+2. Choose **RoomSuite with MCP and headless rendering** if you want agents to use the rooms. The optional component includes the MCP dependencies and a matching headless browser; it does not download anything during installation. You can rerun the installer to add it later.
+3. Open **RoomSuite** from the Start menu. It starts a local server and opens the suite in your browser. Keep the RoomSuite window open while you work; closing it stops the server. You can also opt into a desktop shortcut during setup.
+4. To connect an agent, select **MCP setup** in the RoomSuite window, copy the JSON or Codex TOML configuration into the agent's MCP settings, and restart the agent. The installer does not edit agent settings for you. See the [MCP guide](mcp/README.md) for usage and host-specific details.
+
+The app opens at **http://127.0.0.1:8090/**. If another program uses that port, stop it before starting RoomSuite. Saved projects, files, and the agent workspace are kept under `%LOCALAPPDATA%\RoomSuite`, separate from the installed program. Close RoomSuite before backing up that folder. Uninstalling from Windows Apps removes installed program files but leaves this data in place. Updating means downloading and running a newer installer; choose the MCP component again if you use it.
+
+### Run from source on Windows
+
+If you prefer a checkout, install Git and Node.js 20 or later, then run in PowerShell:
+
+~~~powershell
+git clone https://github.com/ElHombreAlex/RoomSuite.git
+cd RoomSuite
+node server.js
+~~~
+
+Open **http://127.0.0.1:8090/** in your browser and keep the terminal open. Press Ctrl+C to stop the server. The standard interface requires no npm install. MCP and the server-side render endpoint have [additional setup steps](mcp/README.md#install).
+
+## Linux setup
+
+Install Git and Node.js 18 or later (use Node.js 20 or later for MCP and server-side rendering):
 
 ~~~sh
 git clone https://github.com/ElHombreAlex/RoomSuite.git
@@ -23,9 +46,9 @@ cd RoomSuite
 node server.js
 ~~~
 
-On the server itself, open **http://127.0.0.1:8090/** and choose a room. The suite runs on Cliproom's existing server; starting the standalone Cliproom server still starts Cliproom on its own as before. Stop the server with Ctrl+C.
+Open **http://127.0.0.1:8090/** on the server and choose a room. Press Ctrl+C to stop it. No npm install is needed for the standard interface; see the [MCP guide](mcp/README.md#install) for optional agent tools and headless rendering. An adaptable systemd example is in [deploy/roomsuite.service.example](deploy/roomsuite.service.example).
 
-The suite uses the existing `CLIPROOM_PORT`, `CLIPROOM_DATA`, and `CLIPROOM_ALLOWED_HOSTS` environment variables. Cliproom projects and media default to `cliproom/data/`; notes, PaintRoom projects and shared files default to `cliproom/data/workspace/`. Set `ROOMSUITE_DATA` to put the latter in a separate persistent directory. See [Storage and backups](#storage-and-backups) before deploying. An adaptable systemd example is in [deploy/roomsuite.service.example](deploy/roomsuite.service.example).
+For source-based installs on either platform, `CLIPROOM_PORT`, `CLIPROOM_DATA`, `ROOMSUITE_DATA`, and `CLIPROOM_ALLOWED_HOSTS` configure the server. Cliproom projects and media default to `cliproom/data/`; notes, PaintRoom projects and shared files default to `cliproom/data/workspace/`. See [Storage and backups](#storage-and-backups) before deploying. Clones and separate installations have independent data; GitHub stores source code, not your projects.
 
 ## Use it on other devices
 
@@ -70,9 +93,9 @@ Draw with a brush or eraser, make lines, rectangles, ellipses and Bézier paths,
 
 `ROOMSUITE_MAX_FILE_BYTES` defaults to 536870912 (512 MiB per shared upload), and `ROOMSUITE_MAX_STORAGE_BYTES` defaults to 5368709120 (5 GiB total for shared files, notes and PaintRoom projects). Both accept positive integer byte counts. Cliproom's existing media library is separate and is not counted in this quota. File names and paths are validated, uploads cannot overwrite existing files, and downloads are served as attachments. Notes and PaintRoom projects use revision checks to prevent silent overwrites. Limits assume one RoomSuite server process owns the data directory; avoid modifying it directly while the service is running.
 
-Use a dedicated unprivileged service account, keep both data directories writable only by that account, and store them outside the Git checkout. The default `cliproom/data/` and `roomsuite-data/` locations are ignored by Git, but a custom `ROOMSUITE_DATA` path inside the checkout is not automatically ignored. Never commit user data or private service settings. Repository backups cover the source and example configuration, not the data or a working restore.
+For a Linux service, use a dedicated unprivileged account, keep both data directories writable only by that account, and store them outside the Git checkout. The default `cliproom/data/` and `roomsuite-data/` locations are ignored by Git, but a custom `ROOMSUITE_DATA` path inside the checkout is not automatically ignored. Never commit user data or private service settings. Repository backups cover the source and example configuration, not the data or a working restore.
 
-Back up **both** `CLIPROOM_DATA` and `ROOMSUITE_DATA` independently of GitHub. Stop the service first for a consistent snapshot, then run the included Linux backup script with the same data paths as the service:
+On Windows, close the installed RoomSuite launcher and copy `%LOCALAPPDATA%\RoomSuite` to independent storage. For a source checkout, back up its configured data directories instead. On Linux, back up **both** `CLIPROOM_DATA` and `ROOMSUITE_DATA` independently of GitHub. Stop the service first for a consistent snapshot, then run the included Linux backup script with the same data paths as the service:
 
 ~~~sh
 mkdir -p /srv/roomsuite-backups
