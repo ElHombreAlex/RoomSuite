@@ -65,14 +65,20 @@ The MCP process, its workspace, and the browser run on the agent's machine. If t
 
 The agent host's sandbox must allow the MCP process to launch Chromium, access its configured workspace, and connect to the RoomSuite URL. If any of those are blocked, the corresponding tool call returns an error.
 
+### Limit tool schemas for a focused workflow
+
+By default, all tools are advertised. To reduce the schemas an agent receives, optionally set `ROOMSUITE_MCP_GROUPS` in that agent's MCP environment to a comma-separated list such as `shared,decksuite,gridsuite`, then restart the MCP connection. Available groups are `shared`, `notesroom`, `paintroom`, `pixelroom`, `soundroom`, `vectorroom`, `captureroom`, `cliproom`, `docsuite`, `gridsuite`, `decksuite` and `plansuite`. Discovery and deployment checks remain available. Include `shared` when you need file transfer or media-preview tools; add all groups needed by a multi-room workflow. `roomsuite_info` reports the tools actually exposed by that connection, and `roomsuite_discover_suites` lists its enabled productivity suites. An unknown group prevents initialization and is reported on MCP stderr.
+
+This is a convenience for reducing tool schemas, not an access-control boundary: selected tools and the agent host may still reach other files or RoomSuite data. Without the setting, existing clients continue to receive the full tool list.
+
 ## Productivity workflows
 
 The productivity tools operate on editable files in the RoomSuite server's **Shared files**, not on paths in the agent's separate MCP workspace. A create action requires a new path with the appropriate extension; parent folders must already exist. Reads return the file's current `revision`, its state and a browser `url`. Pass that revision as `base_revision` to each edit. A stale revision fails without overwriting newer work. `roomsuite_productivity_get` and `roomsuite_productivity_save` offer full-state access for all four formats.
 
 - **DocSuite:** Create, read, append, replace and insert images with the `docsuite_*` tools. `docsuite_add_comment`, `docsuite_update_comment` and `docsuite_delete_comment` manage comments; quotes are static context. DOCX export warns that comments are omitted.
 - **GridSuite:** Use the `gridsuite_*` tools for sheets, cells, formulas, charts, filters, CSV and XLSX. `gridsuite_set_filter` applies a saved, non-destructive contains filter or clears it with null. Set `sheet_name` to target a sheet; omit it for the active sheet. Excel charts and supported cell styles round-trip within the limits in the main guide.
-- **DeckSuite:** The `decksuite_*` tools manage slides and PowerPoint/PDF files. `decksuite_apply_template` applies `standard`, `title`, `split` or `statement` to a slide without replacing its text or image.
-- **PlanSuite:** The `plansuite_*` tools manage and export events. `plansuite_add_events` accepts up to 52 events with explicit offsets; set `series: true` to link them. On update or delete, `scope: "series"` affects all linked events; the default is one occurrence. Series time edits shift each event by the same elapsed amount. Reminders require ntfy and a running server.
+- **DeckSuite:** The `decksuite_*` tools manage slides and PowerPoint/PDF files. `decksuite_apply_template` applies `standard`, `title`, `split` or `statement` to a slide without replacing its text or image. Set `response_mode: "summary"` on reads, edits, creation or PPTX import to receive the revision, slide IDs, titles and image-presence flags without repeating embedded image bytes. The default `full` response remains unchanged; request it when the complete state is needed.
+- **PlanSuite:** The `plansuite_*` tools manage and export events. `plansuite_add_events` accepts up to 52 events with explicit offsets; set `series: true` only for related occurrences. Create unrelated one-off events separately. On update or delete, `scope: "series"` affects all linked events; the default is one occurrence. Series time edits shift each event by the same elapsed amount. Reminders require ntfy and a running server.
 
 Call `roomsuite_discover_suites` for capabilities and limits. Productivity edits require the current `base_revision`; after a conflict, read again before retrying. Tool failures retain a readable message and return `structuredContent.error.code` where available, including `REVISION_CONFLICT`, `NOT_FOUND`, `INVALID_ARGUMENT`, `FORBIDDEN`, `UNAVAILABLE` and `OPERATION_FAILED`. Schema validation errors are reported by the MCP protocol.
 
@@ -89,10 +95,13 @@ For example, an agent can create `Budget.gridsuite` with cells `A1: "12"`, `A2: 
 - Paths in tool arguments may be relative to that directory or absolute paths inside it. Output parent directories must already exist. Existing output files are never overwritten.
 - Editor-based calls use separate browser sessions. Independent calls may run concurrently, subject to available CPU, memory, and browser resources.
 - File-producing tools return JSON containing the output path, MIME type and size. For video output, supply a filename without an extension to let the browser choose .mp4 or .webm.
+- For `cliproom_render`, `duration` applies to still images as a source end time. For audio or video clips use `source_in` and `source_out` instead; incompatible timing fields are rejected rather than ignored.
 - PixelRoom, SoundRoom, VectorRoom and static CaptureRoom jobs process data in the local browser session. Cliproom imports each supplied media file into its server library, where it remains even when the generated project is not saved. Set save_project to true to also create an editable Cliproom project.
 - Cancelling a call stops its browser job. An upload already completed by Cliproom remains in the server library.
 
 The MCP workspace restriction is separate from your agent host's own filesystem permissions. Choose a workspace whose files the agent is allowed to access.
+
+For complex artwork, prefer smaller `paintroom_create`/`paintroom_edit` calls or file-based element inputs assembled with the bounded workspace-write tools. Large parallel tool-call arguments can exceed a model or host's practical streaming limits. A malformed model response occurs before RoomSuite receives that call; the agent host should report it and retry generation without blindly repeating writes that already completed.
 
 NotesRoom stores its mixed-media sequence in the Markdown `body`; media files are separate Shared files. An agent can upload a supported file with `roomsuite_shared_upload`, then use `notesroom_update` with the current revision to insert a line such as `![Sketch](/api/workspace/file?path=NotesRoom+media%2Fsketch.png){width=420}` or `[Voice note](/api/workspace/file?path=NotesRoom+media%2Fvoice.webm)`. Encode the shared path as a URL query parameter. Removing or moving a shared file can break the note; deleting the note does not delete its media.
 
@@ -104,7 +113,7 @@ NotesRoom stores its mixed-media sequence in the Markdown `body`; media files ar
 | roomsuite_list_files | List a workspace directory with file sizes and modification times, using offset/limit pagination. |
 | roomsuite_media_info | Inspect a local image, audio or video file's type, dimensions and duration without uploading it. |
 | roomsuite_preview_image | Return an existing raster image from the MCP workspace as an inline preview for a compatible vision-capable agent. |
-| roomsuite_preview_video | Decode frames at specified times from a local video and return an image, actual frame timestamps, dimensions, codecs and audio-track metadata. |
+| roomsuite_preview_video | Decode frames from a local video with WebCodecs or a browser-media fallback. The fallback returns null frame timestamps and durations when exact presentation timing is unavailable. |
 | roomsuite_write_begin, roomsuite_write_append, roomsuite_write_finish, roomsuite_write_abort | Safely build a JSON or `.paintroom` file in bounded chunks in the agent workspace, with retry and optional checksum verification. |
 | roomsuite_shared_list, roomsuite_shared_search | Browse a shared folder or search filenames and paths across the server workspace. Search returns at most 200 matches and reports `truncated` if the scan was limited. |
 | roomsuite_shared_upload, roomsuite_shared_download | Transfer a file between the agent's MCP workspace and the server shared workspace; existing destination files are never overwritten. |

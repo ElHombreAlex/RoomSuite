@@ -1,7 +1,7 @@
 import {Client} from '@modelcontextprotocol/client';
 import {StdioClientTransport} from '@modelcontextprotocol/client/stdio';
 import {fileURLToPath} from 'node:url';
-const client=new Client({name:'roomsuite-deployment-check',version:'2.1.0'});
+const client=new Client({name:'roomsuite-deployment-check',version:'2.1.1'});
 try{
   await client.connect(new StdioClientTransport({command:process.execPath,args:[fileURLToPath(new URL('./server.mjs',import.meta.url))],env:process.env,stderr:'pipe'}));
   const result=await client.callTool({name:'roomsuite_check_deployment',arguments:{}},{timeout:120000});

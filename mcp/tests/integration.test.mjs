@@ -102,6 +102,13 @@ test('SoundRoom trims and fades audio to WAV', async () => {
   const data = await fs.readFile(result.path); assert.equal(data.toString('ascii',0,4),'RIFF');
   assert.ok(result.duration_seconds > .95 && result.duration_seconds < 1.05); assert.equal(data.readInt16LE(44),0);
 });
+test('Cliproom rejects duration fields that would otherwise be ignored',async()=>{
+  const before=(await fs.readdir(path.join(temp,'data','assets'))).sort();
+  for(const [media,pattern] of [[{input:'tone.wav',duration:1},/duration.*still images/i],[{input:'cropped.png',source_out:1},/duration rather than source_out/i]]){
+    const result=await client.callTool({name:'cliproom_render',arguments:{output:'invalid-timing',media:[media]}});assert.equal(result.isError,true);assert.equal(result.structuredContent.error.code,'INVALID_ARGUMENT');assert.match(result.content[0].text,pattern);
+  }
+  assert.deepEqual((await fs.readdir(path.join(temp,'data','assets'))).sort(),before);
+});
 test('CaptureRoom records a prepared visual scene', async () => {
   const updates = [];
   const response = await client.callTool({ name:'captureroom_record_scene', arguments:{ output:'scene', image:'art.png', text:'Hello', duration:2 } }, { timeout:180000, onprogress:update => updates.push(update.progress) });

@@ -19,6 +19,10 @@ test('spreadsheet formulas calculate references, ranges and report errors',()=>{
   const more=Grid.calculate({...cells,D1:'=IF(A1>1,"Yes",1/0)',D2:'=IF(FALSE,D2,ROUND(1.005,2))',D3:'=COUNTA(A1:A3)',D4:'="Coffee "&"and tea"',D5:'=10%+2',D6:'=AND(A1<3,A2>=3)',D7:'=ABS(-4)'},100,26);
   assert.equal(more('D1'),'Yes');assert.equal(more('D2'),'1.01');assert.equal(more('D3'),'3');assert.equal(more('D4'),'Coffee and tea');assert.equal(more('D5'),'2.1');assert.equal(more('D6'),'TRUE');assert.equal(more('D7'),'4');
 });
+test('SUMIF totals matching categories, comparisons and wildcards',()=>{
+  const cells={A1:'Equipment',A2:'equipment',A3:'Marketing',A4:'Equip*',B1:'4800',B2:'1440',B3:'1200',B4:'20',C1:'=SUMIF(A1:A4,"Equipment",B1:B4)',C2:'=SUMIF(B1:B4,">=1200")',C3:'=SUMIF(A1:A4,"Equip*",B1:B4)',C4:'=SUMIF(A1:A4,"Equip~*",B1:B4)',C5:'=SUMIF(A1:A4,"<>Equipment",B1:B4)',C6:'=SUMIF(A1:A4,"Equipment",B1:B2)',C7:'=SUMIF(A1:A2,"Equipment",B1:C1)'};
+  const calculate=Grid.calculate(cells,100,26);assert.equal(calculate('C1'),'6240');assert.equal(calculate('C2'),'7440');assert.equal(calculate('C3'),'6260');assert.equal(calculate('C4'),'20');assert.equal(calculate('C5'),'1220');assert.equal(calculate('C6'),'#VALUE!');assert.equal(calculate('C7'),'#VALUE!');
+});
 test('CSV preserves commas, quotes, newlines and empty values',()=>{
   const rows=[['Name','Note',''],['Alex','A "quoted",\nsecond line','42'],['','last','']];
   assert.deepEqual(Grid.parseCsv(Grid.toCsv(rows)),rows);assert.throws(()=>Grid.parseCsv('"unclosed'),/quote/i);

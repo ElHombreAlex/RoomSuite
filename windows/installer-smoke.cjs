@@ -46,7 +46,7 @@ async function scenario(temp, mode) {
       run(installer,['/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOICONS','/SP-',`/GROUP=${group}`,`/DIR=${dir}`,'/TYPE=full',`/LOG=${path.join(temp,'upgrade.log')}`]);
       await fs.access(path.join(mcpDir,'playwright','package.json'));await fs.access(path.join(dir,'browsers'));assert.equal(await fs.readFile(path.join(data,'data','before-upgrade.txt'),'utf8'),'keep');
       const upgraded=await launchNode(dir,{...env,CLIPROOM_DATA:path.join(data,'data','cliproom'),ROOMSUITE_DATA:path.join(data,'data','workspace')});
-      const upgradeClient=new Client({name:'installer-upgrade-check',version:'2.1.0'});
+      const upgradeClient=new Client({name:'installer-upgrade-check',version:'2.1.1'});
       try{await upgradeClient.connect(new StdioClientTransport({command:path.join(dir,'runtime','node.exe'),args:[path.join(dir,'mcp','server.mjs')],env:{...env,ROOMSUITE_MCP_WORKSPACE:workspace,ROOMSUITE_MCP_URL:`http://127.0.0.1:${portNumber}`},stderr:'pipe'}));const checked=await request(upgradeClient,'roomsuite_check_deployment',{});assert.equal(checked.structuredContent.ok,true,checked.structuredContent.issues.join('; '));}
       finally{await upgradeClient.close().catch(()=>{});await stop(upgraded);}
     }

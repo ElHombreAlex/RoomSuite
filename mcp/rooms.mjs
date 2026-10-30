@@ -149,6 +149,10 @@ async function preflightVideoOutput(requested, mode) {
     await outputPath(requested, ['.mp4', '.webm']);
   }
 }
+function validateMediaFields(entry,kind){
+  if(kind!=='image'&&entry.duration!==undefined)throw Object.assign(new Error('The duration field applies only to still images. For audio or video, use source_in and source_out to choose the source range.'),{status:400});
+  if(kind==='image'&&entry.source_out!==undefined)throw Object.assign(new Error('For a still image, use duration rather than source_out.'),{status:400});
+}
 async function downloadTo(page, button, output, mime) {
   const [download] = await Promise.all([page.waitForEvent('download', { timeout:timeoutMs }), page.locator(button).click()]);
   return saveDownload(download, output, mime);
@@ -324,9 +328,12 @@ export async function renderVideo(args, signal, progress) {
     if (!Object.keys(frame).some(key => !['time','source_time','timeline_time'].includes(key))) throw new Error('A keyframe must set at least one property.');
   }
   const requested=[...new Set(entries.map(entry=>entry.input).filter(Boolean))],resolved=await Promise.all(requested.map(inputPath)),fileFor=new Map(requested.map((name,i)=>[name,resolved[i]])),files=[...new Set(resolved)],existingIds=[...new Set(entries.map(entry=>entry.asset_id).filter(Boolean))];
+  const inputKinds={'.png':'image','.jpg':'image','.jpeg':'image','.webp':'image','.gif':'image','.avif':'image','.mp3':'audio','.m4a':'audio','.wav':'audio','.ogg':'audio','.flac':'audio','.mp4':'video','.m4v':'video','.mov':'video','.webm':'video'};
+  for(const entry of entries)if(entry.input){const kind=inputKinds[path.extname(entry.input).toLowerCase()];if(kind)validateMediaFields(entry,kind);}
   const {imported,existing} = await withRoom('/cliproom/', 'Cliproom', signal, async page => {
     const imported = [],existing=[];
     for(const id of existingIds)existing.push(await reuseCliproomMedia(page,id));
+    for(const entry of entries)if(entry.asset_id)validateMediaFields(entry,existing.find(asset=>asset.id===entry.asset_id).kind);
     for (let i = 0; i < files.length; i++) {
       try { imported.push(await uploadCliproomMedia(page, files[i])); }
       catch (error) { throw new Error('Could not import ' + files[i] + ': ' + error.message); }
@@ -339,6 +346,7 @@ export async function renderVideo(args, signal, progress) {
   entries.forEach(entry => {
     const asset = entry.asset_id?existingFor.get(entry.asset_id):assetFor.get(fileFor.get(entry.input)), isAudio = asset.kind === 'audio';
     if(entry._frame&&asset.kind!=='image')throw new Error('Frame sequences require still-image files or assets: '+(entry.input||entry.asset_id));
+    validateMediaFields(entry,asset.kind);
     const clips = isAudio ? state.audioClips : state.clips;
     const item = isAudio ? { id:uid(), assetId:asset.id, rate:1, volume:.7, fadeIn:0, fadeOut:0 } :
       { id:uid(), assetId:asset.id, rate:1, volume:1, fit:'contain', opacity:1, scale:1, x:50, y:50, brightness:100, contrast:100, saturation:100, rotation:0, flipX:false, fadeIn:0, fadeOut:0 };

@@ -14,6 +14,21 @@
     const result=[];for(let r=Math.min(a.row,b.row);r<=Math.max(a.row,b.row);r++)for(let c=Math.min(a.col,b.col);c<=Math.max(a.col,b.col);c++)result.push(column(c)+(r+1));
     if(result.length>30)throw new Error('Charts support up to 30 values.');return result;
   }
+  // Excel-style wildcard matching without constructing a user-supplied regex.
+  function wildcard(text,pattern){
+    const tokens=[];for(let i=0;i<pattern.length;i++){const c=pattern[i];if(c==='~'&&i+1<pattern.length&&'*?~'.includes(pattern[i+1]))tokens.push({literal:pattern[++i]});else if(c==='*'||c==='?')tokens.push({wild:c});else tokens.push({literal:c});}
+    let i=0,j=0,star=-1,retry=0;while(i<text.length){const token=tokens[j];if(token&&(token.wild==='?'||token.literal===text[i])){i++;j++;}else if(token?.wild==='*'){star=j++;retry=i;}else if(star>=0){j=star+1;i=++retry;}else return false;}
+    while(tokens[j]?.wild==='*')j++;return j===tokens.length;
+  }
+  function matchesCriterion(value,criterion){
+    if(typeof criterion!=='string')return value===criterion;
+    const match=/^(<=|>=|<>|=|<|>)(.*)$/s.exec(criterion),op=match?match[1]:'=',raw=match?match[2]:criterion;
+    const isNumber=/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(raw.trim()),expected=isNumber?Number(raw.trim()):raw.toLocaleLowerCase();
+    if(value===null)value='';if(isNumber){if(typeof value!=='number')return op==='<>';}
+    else value=String(value).toLocaleLowerCase();
+    if(!isNumber&&(op==='='||op==='<>')){const equal=wildcard(value,expected);return op==='='?equal:!equal;}
+    if(op==='=')return value===expected;if(op==='<>')return value!==expected;if(op==='<')return value<expected;if(op==='>')return value>expected;if(op==='<=')return value<=expected;return value>=expected;
+  }
   function calculate(cells, rows=500, columns=52, types={}) {
     const cache=new Map(), active=new Set();
     function cell(name) {
@@ -46,13 +61,18 @@
         if(/^[A-Z]+[1-9]\d*$/.test(token)){
           if(!take(':'))return ()=>cell(token);
           const last=tokens[i++],a=address(token),b=address(last||'');if(a.row>=rows||b.row>=rows||a.col>=columns||b.col>=columns)throw new Error('#REF!');
-          return ()=>{const result=[];for(let r=Math.min(a.row,b.row);r<=Math.max(a.row,b.row);r++)for(let c=Math.min(a.col,b.col);c<=Math.max(a.col,b.col);c++)result.push(cell(column(c)+(r+1)));return result;};
+          return ()=>{const result=[];for(let r=Math.min(a.row,b.row);r<=Math.max(a.row,b.row);r++)for(let c=Math.min(a.col,b.col);c<=Math.max(a.col,b.col);c++)result.push(cell(column(c)+(r+1)));result.rangeRows=Math.abs(a.row-b.row)+1;result.rangeColumns=Math.abs(a.col-b.col)+1;return result;};
         }
         if(/^[A-Z]+$/.test(token)&&take('(')){
           const args=[];if(!take(')')){do{args.push(expr());}while(take(','));if(!take(')'))throw new Error('#ERROR!');}
           return ()=>{
             if(token==='IF'){if(args.length!==3)throw new Error('#ERROR!');return args[0]()?args[1]():args[2]();}
             if(token==='AND')return args.every(arg=>arg());if(token==='OR')return args.some(arg=>arg());
+            if(token==='SUMIF'){
+              if(args.length<2||args.length>3)throw new Error('#ERROR!');const rangeValue=args[0](),criterion=args[1](),sumValue=args.length===3?args[2]():rangeValue;
+              if(Array.isArray(criterion))throw new Error('#VALUE!');const checked=Array.isArray(rangeValue)?rangeValue:[rangeValue],summed=Array.isArray(sumValue)?sumValue:[sumValue];
+              if(checked.length!==summed.length||(Array.isArray(rangeValue)&&Array.isArray(sumValue)&&(rangeValue.rangeRows!==sumValue.rangeRows||rangeValue.rangeColumns!==sumValue.rangeColumns)))throw new Error('#VALUE!');return checked.reduce((total,value,index)=>total+(matchesCriterion(value,criterion)&&typeof summed[index]==='number'?summed[index]:0),0);
+            }
             const items=args.map(arg=>arg()).flat(),values=items.filter(value=>typeof value==='number');
             if(token==='COUNT')return values.length;if(token==='COUNTA')return items.filter(value=>value!==null).length;
             if(token==='SUM')return values.reduce((a,b)=>a+b,0);

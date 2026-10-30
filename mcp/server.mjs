@@ -71,15 +71,21 @@ function handler(fn) {
 function renderWithPreview(fn){return async(args,signal,progress)=>{const result=await fn(args,signal,progress);if(!args.preview_times)return result;try{const preview=await previewVideo({input:result.path,times:args.preview_times},signal),{preview:picture,[imageContent]:images,...verification}=preview;return {...result,verification,preview:picture,[imageContent]:images};}catch(error){return {...result,preview_error:'Video was saved, but inspection failed: '+error.message};}};}
 function buildServer() {
   const server = new McpServer({ name:'roomsuite', version:Version.snapshot().version });
-  server.registerTool('roomsuite_check_deployment',{title:'Check running versions',description:'Compare this connected MCP process, the backend startup snapshot, current files, and served frontend HTML, CSS and JavaScript. Each connected agent must check its own MCP process.',inputSchema:z.object({}),outputSchema:z.object({ok:z.boolean(),version:z.string(),backend_version:z.string(),checked_frontend_files:z.number(),issues:z.array(z.string()),scope:z.string()}),annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}},handler(deploymentStatus));
+  const knownGroups=['shared','notesroom','paintroom','pixelroom','soundroom','vectorroom','captureroom','cliproom','docsuite','gridsuite','decksuite','plansuite'];
+  const configured=(process.env.ROOMSUITE_MCP_GROUPS||'').trim(),groups=configured?new Set(configured.toLowerCase().split(',').map(value=>value.trim()).filter(Boolean)):null;
+  if(groups&&(!groups.size||[...groups].some(group=>!knownGroups.includes(group))))throw new Error('ROOMSUITE_MCP_GROUPS must be a comma-separated list of: '+knownGroups.join(', '));
+  const suites=['docsuite','gridsuite','decksuite','plansuite'],always=new Set(['roomsuite_info','roomsuite_check_deployment','roomsuite_discover_suites']);
+  const enabled=name=>!groups||always.has(name)||(name.startsWith('roomsuite_productivity_')?suites.some(suite=>groups.has(suite)):name.startsWith('roomsuite_')?groups.has('shared'):groups.has(name.split('_')[0]));
+  const published=[],registrar={registerTool(name,configuration,fn){if(!enabled(name))return;published.push(name);return server.registerTool(name,configuration,fn);}};
+  registrar.registerTool('roomsuite_check_deployment',{title:'Check running versions',description:'Compare this connected MCP process, the backend startup snapshot, current files, and served frontend HTML, CSS and JavaScript. Each connected agent must check its own MCP process.',inputSchema:z.object({}),outputSchema:z.object({ok:z.boolean(),version:z.string(),backend_version:z.string(),checked_frontend_files:z.number(),issues:z.array(z.string()),scope:z.string()}),annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}},handler(deploymentStatus));
   const capabilities={
     docsuite:{supports:['Formatted text, lists, tables, links and images','Comments with quoted context and resolve/delete','DOCX import/export and PDF export'],limits:['Comments do not follow edited text and are not exported to DOCX','Complex Word layout and styles may be simplified']},
-    gridsuite:{supports:['Up to 20 sheets, 500 rows and 52 columns','Formulas, simple cell styles, one bar or line chart per sheet','Contains filter, CSV and XLSX import/export'],limits:['Only supported formulas calculate locally','Advanced charts and cell formatting may be simplified','Filters are not exported to XLSX']},
-    decksuite:{supports:['Up to 100 slides with text and one image','Four layout templates and positioned slide objects','PPTX import/export and PDF export'],limits:['Multiple text boxes may be combined','Advanced layouts, charts, animations and formatting may be simplified']},
+    gridsuite:{supports:['Up to 20 sheets, 500 rows and 52 columns','Formula functions: SUM, SUMIF, AVERAGE, MIN, MAX, COUNT, COUNTA, IF, AND, OR, ROUND and ABS','Simple cell styles, one bar or line chart per sheet','Contains filter, CSV and XLSX import/export'],limits:['SUMIF supports matching ranges, text wildcards and basic comparisons; other Excel criteria features may differ','Only supported formulas calculate locally','Advanced charts and cell formatting may be simplified','Filters are not exported to XLSX']},
+    decksuite:{supports:['Up to 100 slides with text and one image','Four layout templates and positioned slide objects','PPTX import/export and PDF export','Set response_mode to summary on deck edits and reads to omit embedded images'],limits:['Multiple text boxes may be combined','Advanced layouts, charts, animations and formatting may be simplified']},
     plansuite:{supports:['Month, week and day views','Up to 52 linked occurrences editable as a series','ICS export and optional ntfy reminders'],limits:['Repetitions are finite individual events; there is no calendar sync','Series time edits shift occurrences by the same elapsed duration']}
   };
-  server.registerTool('roomsuite_discover_suites',{title:'Discover productivity suites',description:'List supported workflows and conversion limits for each productivity suite. Mutations use a current base_revision; get the file again after a revision conflict.',inputSchema:z.object({suite:z.enum(['docsuite','gridsuite','decksuite','plansuite']).optional()}),outputSchema:z.object({suites:z.record(z.string(),z.object({supports:z.array(z.string()),limits:z.array(z.string())})),revisions:z.string(),errors:z.string()}),annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}},handler(async args=>({suites:args.suite?{[args.suite]:capabilities[args.suite]}:capabilities,revisions:'Read a file to obtain its revision; pass it as base_revision to each edit. A null revision creates a new file.',errors:'Tool errors include a human-readable message and structuredContent.error.code. Schema validation errors are returned by the MCP protocol.'})));
-  server.registerTool('roomsuite_info', {
+  registrar.registerTool('roomsuite_discover_suites',{title:'Discover productivity suites',description:'List enabled productivity suites, their supported workflows and conversion limits. Mutations use a current base_revision; get the file again after a revision conflict.',inputSchema:z.object({suite:z.enum(['docsuite','gridsuite','decksuite','plansuite']).optional()}),outputSchema:z.object({suites:z.record(z.string(),z.object({supports:z.array(z.string()),limits:z.array(z.string())})),revisions:z.string(),errors:z.string()}),annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}},handler(async args=>({suites:Object.fromEntries(Object.entries(capabilities).filter(([name])=>(!groups||groups.has(name))&&(!args.suite||args.suite===name))),revisions:'Read a file to obtain its revision; pass it as base_revision to each edit. A null revision creates a new file.',errors:'Tool errors include a human-readable message and structuredContent.error.code. Schema validation errors are returned by the MCP protocol.'})));
+  registrar.registerTool('roomsuite_info', {
     title:'RoomSuite capabilities',
     description:'Describe the workspace and available agent workflows. RoomSuite must be running separately. Screen, camera and microphone capture require a person to grant access in the CaptureRoom UI.',
     inputSchema:z.object({}),
@@ -87,54 +93,54 @@ function buildServer() {
     annotations:{ readOnlyHint:true, destructiveHint:false, openWorldHint:false }
   }, handler(async () => ({
     workspace:await workspace(), server_url:serverUrl(),
-    rooms:['roomsuite_list_files','roomsuite_media_info','roomsuite_preview_image','roomsuite_preview_video','roomsuite_write_begin','roomsuite_write_append','roomsuite_write_finish','roomsuite_write_abort','roomsuite_shared_list','roomsuite_shared_search','roomsuite_shared_upload','roomsuite_shared_download','roomsuite_shared_mkdir','roomsuite_shared_move','roomsuite_shared_delete','notesroom_list','notesroom_get','notesroom_create','notesroom_update','notesroom_delete','notesroom_folders','notesroom_delete_folder','paintroom_list','paintroom_get','paintroom_create','paintroom_import_project','paintroom_clone','paintroom_edit','paintroom_preview','paintroom_preview_sheet','paintroom_export','paintroom_export_batch','pixelroom_edit','pixelroom_inpaint','soundroom_edit','vectorroom_create','vectorroom_preview','captureroom_record_scene','cliproom_import_media','cliproom_list_projects','cliproom_get_project','cliproom_save_project','cliproom_render','cliproom_render_project','roomsuite_productivity_get','roomsuite_productivity_save','docsuite_create','docsuite_get','docsuite_append_text','docsuite_replace_text','docsuite_insert_image','docsuite_export_pdf','docsuite_import_docx','docsuite_export_docx','gridsuite_create','gridsuite_get','gridsuite_set_cells','gridsuite_read_cells','gridsuite_set_chart','gridsuite_resize','gridsuite_sort_rows','gridsuite_add_sheet','gridsuite_select_sheet','gridsuite_import_csv','gridsuite_export_csv','gridsuite_import_xlsx','gridsuite_export_xlsx','decksuite_create','decksuite_get','decksuite_add_slide','decksuite_update_slide','decksuite_delete_slide','decksuite_export_pdf','decksuite_import_pptx','decksuite_export_pptx','plansuite_create','plansuite_get','plansuite_list_events','plansuite_add_event','plansuite_add_events','plansuite_update_event','plansuite_delete_event','plansuite_export_ics','roomsuite_discover_suites','roomsuite_check_deployment','docsuite_add_comment','docsuite_update_comment','docsuite_delete_comment','gridsuite_set_filter','decksuite_apply_template'],
-    notes:['Input and output files must be inside the configured MCP workspace; existing output files are never overwritten.', 'Editor-based tools use isolated headless browser sessions.', 'Cliproom imports media into the server library; it remains there after the call.', 'Updating a saved Cliproom project requires its current revision.', 'CaptureRoom live screen, camera and microphone access require an interactive user and are not exposed by this MCP server.']
+    rooms:published.filter(name=>name!=='roomsuite_info'),
+    notes:['Input and output files must be inside the configured MCP workspace; existing output files are never overwritten.', 'Editor-based tools use isolated headless browser sessions.', 'Cliproom imports media into the server library; it remains there after the call.', 'Updating a saved Cliproom project requires its current revision.', 'CaptureRoom live screen, camera and microphone access require an interactive user and are not exposed by this MCP server.',...(groups?['This connection exposes only the configured groups: '+[...groups].join(', ')+'.']:[])]
   })));
-  server.registerTool('roomsuite_list_files', {
+  registrar.registerTool('roomsuite_list_files', {
     title:'List workspace files',
     description:'List files and directories within the MCP workspace. Results are paginated; symlinks are reported without following them.',
     inputSchema:z.object({ directory:file.optional().describe('Workspace directory to list; defaults to the workspace root.'), offset:z.number().int().min(0).optional(), limit:z.number().int().min(1).max(500).optional() }),
     outputSchema:z.object({ workspace:z.string(), directory:z.string(), entries:z.array(z.object({name:z.string(),type:z.string(),bytes:z.number().nullable(),modified_at:z.string()})), total:z.number(), offset:z.number(), next_offset:z.number().nullable() }),
     annotations:{ readOnlyHint:true, destructiveHint:false, openWorldHint:false }
   }, handler(listFiles));
-  server.registerTool('roomsuite_media_info', {
+  registrar.registerTool('roomsuite_media_info', {
     title:'Inspect image, audio, or video',
     description:'Read local media dimensions, duration, MIME type, and size using the browser. Does not upload the file. Duration is null when the browser cannot determine it.',
     inputSchema:z.object({ input:file }),
     outputSchema:z.object({name:z.string(),bytes:z.number(),mime_type:z.string(),kind:z.string(),width:z.number().nullable(),height:z.number().nullable(),duration_seconds:z.number().nullable()}),
     annotations:{ readOnlyHint:true, destructiveHint:false, openWorldHint:false }
   }, handler(inspectMedia));
-  server.registerTool('roomsuite_preview_video', {
-    title:'Inspect frames from an exported video',description:'Decode one or more timestamps from the actual workspace video and return a labeled image sheet, actual presentation timestamps and track metadata. Times must be within the video track.',
-    inputSchema:z.object({input:file,times:z.array(seconds).min(1).max(12),columns:z.number().int().min(1).max(4).optional(),max_dimension:z.number().int().min(256).max(1536).optional()}),
-    outputSchema:z.object({name:z.string(),bytes:z.number(),mime_type:z.string(),width:z.number(),height:z.number(),video_codec:z.string().nullable(),video_tracks:z.number(),audio_tracks:z.array(z.object({number:z.number(),codec:z.string().nullable()})),video_start_seconds:z.number(),video_end_seconds:z.number(),duration_seconds:z.number(),metadata_duration_seconds:z.number().nullable(),frames:z.array(z.object({requested_time:z.number(),presentation_time:z.number(),duration:z.number()})),preview:z.object({width:z.number(),height:z.number(),bytes:z.number(),mime_type:z.literal('image/png')})}),annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}
+  registrar.registerTool('roomsuite_preview_video', {
+    title:'Inspect frames from an exported video',description:'Decode timestamps from the actual workspace video and return an image sheet and track metadata. If WebCodecs cannot decode it, try the browser media player; that fallback reports null presentation timestamps because exact frame timing is unavailable.',
+    inputSchema:z.object({input:file,times:z.array(seconds).min(1).max(12),columns:z.number().int().min(1).max(4).optional(),max_dimension:z.number().int().min(256).max(1536).optional(),decoder:z.enum(['auto','media_element']).optional().describe('Auto tries WebCodecs, then browser media playback; media_element explicitly uses browser playback.')}),
+    outputSchema:z.object({name:z.string(),bytes:z.number(),mime_type:z.string(),width:z.number(),height:z.number(),video_codec:z.string().nullable(),video_tracks:z.number(),audio_tracks:z.array(z.object({number:z.number(),codec:z.string().nullable()})),video_start_seconds:z.number(),video_end_seconds:z.number(),duration_seconds:z.number(),metadata_duration_seconds:z.number().nullable(),decoder:z.enum(['webcodecs','media_element']),frames:z.array(z.object({requested_time:z.number(),presentation_time:z.number().nullable(),duration:z.number().nullable()})),preview:z.object({width:z.number(),height:z.number(),bytes:z.number(),mime_type:z.literal('image/png')})}),annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}
   },handler(previewVideo));
-  server.registerTool('cliproom_import_media', {
+  registrar.registerTool('cliproom_import_media', {
     title:'Import media into Cliproom',
     description:'Import an image, video, or audio file into the Cliproom server library and return its asset metadata for use in projects. The uploaded asset remains on the server; no project is saved.',
     inputSchema:z.object({ input:file }), outputSchema:z.object({asset:z.record(z.string(),z.unknown()),note:z.string()}),
     annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(importCliproomMedia));
-  server.registerTool('cliproom_list_projects', {
+  registrar.registerTool('cliproom_list_projects', {
     title:'List saved Cliproom projects', description:'List the saved projects on the RoomSuite server with their IDs and revisions.',
     inputSchema:z.object({}), outputSchema:z.object({projects:z.array(z.object({id:z.string(),name:z.string(),updatedAt:z.string(),revision:z.number()}))}),
     annotations:{ readOnlyHint:true, destructiveHint:false, openWorldHint:false }
   }, handler(listProjects));
-  server.registerTool('cliproom_get_project', {
+  registrar.registerTool('cliproom_get_project', {
     title:'Read a saved Cliproom project',
     description:'Return a saved project and its revision, or write its JSON to a new file in the MCP workspace for editing.',
     inputSchema:z.object({project_id:z.string().uuid(),output:file.optional().describe('Optional new .json file in the MCP workspace.')}),
     outputSchema:z.object({project:z.record(z.string(),z.unknown()).optional(),path:z.string().optional(),bytes:z.number().optional(),mime_type:z.string().optional(),project_id:z.string().optional(),revision:z.number().optional()}),
     annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(getProject));
-  server.registerTool('cliproom_save_project', {
+  registrar.registerTool('cliproom_save_project', {
     title:'Save a Cliproom project from JSON',
     description:'Create a saved project from a workspace JSON file, or update a project using its current base_revision. Referenced assets must already exist in the server library. A conflicting revision is rejected.',
     inputSchema:z.object({project_path:file.describe('JSON file containing a project state or saved-project wrapper.'),project_id:z.string().uuid().optional(),base_revision:z.number().int().min(0).optional().describe('Required with project_id; use 0 to create a new project with that ID.')}),
     outputSchema:z.object({project_id:z.string(),revision:z.number(),name:z.string(),updated_at:z.string()}),
     annotations:{ readOnlyHint:false, destructiveHint:true, openWorldHint:false }
   }, handler(saveProject));
-  server.registerTool('pixelroom_edit', {
+  registrar.registerTool('pixelroom_edit', {
     title:'Edit an image with PixelRoom',
     description:'Open a local image in PixelRoom, optionally adjust brightness/contrast/saturation, remove the background with the local subject model, crop and rotate; export PNG, JPEG, or WebP. Rotation is applied after the crop within the existing canvas, so corners may be clipped. Background selection is approximate and may need review.',
     inputSchema:z.object({
@@ -144,13 +150,13 @@ function buildServer() {
       remove_background:z.boolean().optional(), rotation:z.number().finite().min(-360).max(360).optional().describe('Clockwise degrees, applied after cropping around the image layer center.')
     }), outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(editImage));
-  server.registerTool('pixelroom_inpaint', {
+  registrar.registerTool('pixelroom_inpaint', {
     title:'Rebuild an image background from a mask',
     description:'Use PixelRoom’s local cleanup model to replace marked pixels, such as text. Input and mask must have identical dimensions; white mask pixels select areas to rebuild, black or transparent pixels preserve them. Output is PNG. Results are approximate; inspect the output. Long selections run in overlapping sections.',
     inputSchema:z.object({input:file,mask:file,output:file.describe('New .png output path.'),padding:z.number().int().min(0).max(24).optional().describe('Expand the mask by this many source pixels; default 4.'),feather:z.number().int().min(0).max(16).optional().describe('Blend the inside edge of the expanded mask; default 2 pixels.')}),
     outputSchema:artifact, annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false}
   },handler(inpaintImage));
-  server.registerTool('soundroom_edit', {
+  registrar.registerTool('soundroom_edit', {
     title:'Edit audio with SoundRoom',
     description:'Open audio, optionally trim, normalize to a peak with headroom, adjust gain or fades, and export a WAV. Default normalization target is -3 dBFS. If gain_percent is supplied, it replaces the normalized gain.',
     inputSchema:z.object({
@@ -159,18 +165,18 @@ function buildServer() {
       normalize:z.boolean().optional(), normalize_peak_dbfs:z.number().min(-24).max(0).optional().describe('Normalize to this peak dBFS; specifying it enables normalization.'), gain_percent:z.number().min(0).max(300).optional(), fade_in:z.number().min(0).max(600).optional(), fade_out:z.number().min(0).max(600).optional()
     }), outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(editAudio));
-  server.registerTool('vectorroom_create', {
+  registrar.registerTool('vectorroom_create', {
     title:'Create artwork with VectorRoom',
     description:'Create a 1000 by 700 vector composition from shapes, text and Bézier paths. Export .svg, .png, or an editable .vectorroom project. Set include_preview to receive an image in the same response. Path in/out coordinates are absolute control points.',
     inputSchema:z.object({ output:file.describe('New output path ending in .svg, .png, or .vectorroom.'), elements:z.array(vectorElement).min(1).max(1000), include_preview:z.boolean().optional(),preview_max_dimension:z.number().int().min(256).max(1536).optional() }),
     outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(createVector));
-  server.registerTool('vectorroom_preview', {
+  registrar.registerTool('vectorroom_preview', {
     title:'Preview VectorRoom artwork',description:'Render shapes, text and paths as an inline PNG image without writing an output file. Requires an image-capable MCP client and model to inspect visually.',
     inputSchema:z.object({elements:z.array(vectorElement).min(1).max(1000),max_dimension:z.number().int().min(256).max(1536).optional()}),
     outputSchema:z.object({room:z.literal('VectorRoom'),operation:z.literal('preview_vector'),preview:z.object({width:z.number(),height:z.number(),bytes:z.number(),mime_type:z.literal('image/png')})}),annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}
   },handler(previewVector));
-  server.registerTool('captureroom_record_scene', {
+  registrar.registerTool('captureroom_record_scene', {
     title:'Record a prepared CaptureRoom scene',
     description:'Record a static scene containing an image and/or wrapped text. Images fit the frame by default; choose contain, cover, or explicit placement. This tool does not capture a screen, camera or microphone. The output extension is chosen by the browser.',
     inputSchema:z.object({
@@ -178,7 +184,7 @@ function buildServer() {
       image:file.optional(), image_fit:z.enum(['contain','cover']).optional(), image_box:captureBox.optional(), text:z.string().min(1).max(500).optional(), font_size:z.number().min(8).max(300).optional(), color:color.optional(), text_box:captureBox.optional(), text_backdrop:z.boolean().optional(), text_fit:z.boolean().optional().describe('Shrink text to fit its box when necessary; default true.')
     }), outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(recordScene));
-  server.registerTool('cliproom_render', {
+  registrar.registerTool('cliproom_render', {
     title:'Create and render a Cliproom video',
     description:'Import media, assemble tracks, positioning, keyframes and titles, then render via the Cliproom server endpoint. Use timeline_time for keyframes at absolute timeline positions. Uploaded media remains in the server library. Optionally save an editable project.',
     inputSchema:z.object({
@@ -191,7 +197,7 @@ function buildServer() {
       save_project:z.boolean().optional(),preview_times:previewTimes
     }), outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(renderWithPreview(renderVideo)));
-  server.registerTool('cliproom_render_project', {
+  registrar.registerTool('cliproom_render_project', {
     title:'Render an existing Cliproom project',
     description:'Call the Cliproom render endpoint with an existing server project ID or a project JSON file in the MCP workspace. Returns a video without driving editor controls. Referenced media must already exist in the Cliproom server library.',
     inputSchema:z.object({
@@ -201,8 +207,8 @@ function buildServer() {
       render_mode:z.enum(['realtime','offline']).optional().describe('Offline exports WebM without waiting for playback; requires normal-speed video/audio, supported codecs, and a project up to 10 minutes. Defaults to realtime.'),preview_times:previewTimes
     }), outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(renderWithPreview(renderSavedProject)));
-  registerWorkspace(server,{handler,file,artifact});
-  registerProductivity(server,{handler,file,artifact});
+  registerWorkspace(registrar,{handler,file,artifact});
+  registerProductivity(registrar,{handler,file,artifact});
   return server;
 }
 serveStdio(buildServer, { onerror:error => console.error('RoomSuite MCP:', error.message) });
