@@ -101,8 +101,8 @@ $('addScreen').addEventListener('click', () => addStream('screen'));
 $('addCamera').addEventListener('click', () => addStream('camera'));
 $('addMic').addEventListener('click', () => addStream('mic'));
 $('addText').addEventListener('click', () => { const item = createSource('text','Text'); scene().sources.push(item); selected = item.id; renderUi(); status('Text added. Edit it in Source settings.'); });
-$('imageFile').addEventListener('change', event => {
-  const file = event.target.files[0]; event.target.value = ''; if (!file) return;
+function addImageFile(file) {
+  if (!file) return;
   const target = scene(), url = URL.createObjectURL(file), image = new Image();
   image.onload = () => {
     if (!scenes.includes(target)) { URL.revokeObjectURL(url); return; }
@@ -110,7 +110,10 @@ $('imageFile').addEventListener('change', event => {
     target.sources.push(item); if (target.id === activeScene) selected = item.id; renderUi(); status('Image added.');
   };
   image.onerror = () => { URL.revokeObjectURL(url); status('This image could not be opened.', true); }; image.src = url;
-});
+}
+$('imageFile').addEventListener('change', event => { const file=event.target.files[0];event.target.value='';addImageFile(file); });
+$('openSharedImage').addEventListener('click',async()=>{try{const file=await RoomShared.choose(['image/*']);if(file)addImageFile(file);}catch(error){status(error.message,true);}});
+(async()=>{try{const file=await RoomShared.fromQuery();if(file)addImageFile(file);}catch(error){status(error.message,true);}})();
 $('addScene').addEventListener('click', () => { const next = { id:uid(), name:'Scene ' + (scenes.length + 1), sources:[] }; scenes.push(next); activeScene = next.id; selected = null; syncAudio(); renderUi(); });
 $('sceneName').addEventListener('change', () => { scene().name = $('sceneName').value.trim().slice(0,60) || 'Untitled scene'; renderUi(); });
 $('deleteScene').addEventListener('click', () => {
@@ -190,6 +193,7 @@ $('record').addEventListener('click', async () => {
   } catch (error) { if (canvasStream) canvasStream.getTracks().forEach(track => track.stop()); canvasStream = null; status('Could not start recording: ' + error.message, true); }
 });
 $('download').addEventListener('click', () => { if (recordingBlob) download(recordingBlob, 'captureroom-recording.' + extension()); });
+$('saveSharedRecording').addEventListener('click',async()=>{if(!recordingBlob)return;try{const path=await RoomShared.save(recordingBlob,'captureroom-recording.'+extension());if(path)status('Saved to shared files: '+path);}catch(error){status(error.message,true);}});
 $('send').addEventListener('click', async () => {
   if (!recordingBlob) return;
   const chosen = recordingBlob, duration = recordingDuration, filename = 'captureroom-recording.' + extension();

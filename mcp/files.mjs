@@ -70,15 +70,15 @@ export async function saveDownload(download, output, type) {
   if (!stat.size) throw new Error('The editor produced an empty file: ' + output);
   return { path: output, bytes: stat.size, mime_type: type };
 }
-export async function saveResponse(response, output, type, signal) {
-  if (!response.body) throw new Error('The renderer returned no video.');
+export async function saveResponse(response, output, type, signal, { allowEmpty = false } = {}) {
+  if (!response.body) throw new Error('The server returned no response body.');
   let created = false, complete = false;
   const destination = createWriteStream(output, { flags:'wx', mode:0o600 });
   destination.once('open', () => { created = true; });
   try {
     await pipeline(Readable.fromWeb(response.body), destination, { signal });
     const stat = await fs.stat(output);
-    if (!stat.size) throw new Error('The renderer returned an empty video.');
+    if (!stat.size && !allowEmpty) throw new Error('The server returned an empty file.');
     complete = true;
     return { path:output, bytes:stat.size, mime_type:type };
   } catch (error) {

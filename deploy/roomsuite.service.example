@@ -1,0 +1,21 @@
+[Unit]
+Description=RoomSuite
+After=network.target
+
+[Service]
+Type=simple
+# Replace the user, paths and optional allowed host with your own deployment values.
+User=roomsuite
+WorkingDirectory=/opt/roomsuite
+Environment=CLIPROOM_PORT=8090
+Environment=CLIPROOM_DATA=/var/lib/roomsuite/cliproom
+Environment=ROOMSUITE_DATA=/var/lib/roomsuite/workspace
+# Environment=CLIPROOM_ALLOWED_HOSTS=your-server.your-tailnet.ts.net:8443
+ExecStart=/usr/bin/node /opt/roomsuite/server.js
+Restart=on-failure
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

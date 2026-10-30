@@ -4,6 +4,7 @@ import * as z from 'zod/v4';
 import { workspace, listFiles } from './files.mjs';
 import { serverUrl, editImage, editAudio, createVector, recordScene, renderVideo, renderSavedProject, inspectMedia, importCliproomMedia } from './rooms.mjs';
 import { listProjects, getProject, saveProject } from './projects.mjs';
+import { registerWorkspace } from './register-workspace.mjs';
 
 const file = z.string().min(1).max(4096).describe('Path relative to the MCP workspace, or an absolute path inside it.');
 const color = z.string().regex(/^#[0-9a-f]{6}$/i).describe('Six-digit hex color, such as #ffffff.');
@@ -70,7 +71,7 @@ function buildServer() {
     annotations:{ readOnlyHint:true, destructiveHint:false, openWorldHint:false }
   }, handler(async () => ({
     workspace:await workspace(), server_url:serverUrl(),
-    rooms:['roomsuite_list_files','roomsuite_media_info','pixelroom_edit','soundroom_edit','vectorroom_create','captureroom_record_scene','cliproom_import_media','cliproom_list_projects','cliproom_get_project','cliproom_save_project','cliproom_render','cliproom_render_project'],
+    rooms:['roomsuite_list_files','roomsuite_media_info','roomsuite_shared_list','roomsuite_shared_search','roomsuite_shared_upload','roomsuite_shared_download','roomsuite_shared_mkdir','roomsuite_shared_move','roomsuite_shared_delete','notesroom_list','notesroom_get','notesroom_create','notesroom_update','notesroom_delete','notesroom_folders','notesroom_delete_folder','paintroom_list','paintroom_get','paintroom_create','paintroom_edit','paintroom_export','pixelroom_edit','soundroom_edit','vectorroom_create','captureroom_record_scene','cliproom_import_media','cliproom_list_projects','cliproom_get_project','cliproom_save_project','cliproom_render','cliproom_render_project'],
     notes:['Input and output files must be inside the configured MCP workspace; existing output files are never overwritten.', 'Editor-based tools use isolated headless browser sessions.', 'Cliproom imports media into the server library; it remains there after the call.', 'Updating a saved Cliproom project requires its current revision.', 'CaptureRoom live screen, camera and microphone access require an interactive user and are not exposed by this MCP server.']
   })));
   server.registerTool('roomsuite_list_files', {
@@ -167,6 +168,7 @@ function buildServer() {
       render_mode:z.enum(['realtime','offline']).optional().describe('Offline exports WebM without waiting for playback; requires normal-speed video/audio, supported codecs, and a project up to 10 minutes. Defaults to realtime.')
     }), outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(renderSavedProject));
+  registerWorkspace(server,{handler,file,artifact});
   return server;
 }
 serveStdio(buildServer, { onerror:error => console.error('RoomSuite MCP:', error.message) });

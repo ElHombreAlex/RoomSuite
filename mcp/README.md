@@ -66,6 +66,7 @@ The agent host's sandbox must allow the MCP process to launch Chromium, access i
 ## Files and sessions
 
 - ROOMSUITE_MCP_WORKSPACE is the directory the agent can use for inputs and outputs. If omitted, it defaults to the ignored mcp/workspace/ directory. The directory is created if necessary.
+- The **server shared files** are a separate persistent workspace, accessed through `roomsuite_shared_*` tools. Shared paths use `/` and are relative to the server's shared-files root; MCP workspace paths refer to the machine running the agent. Upload and download tools copy between these two locations.
 - Paths in tool arguments may be relative to that directory or absolute paths inside it. Output parent directories must already exist. Existing output files are never overwritten.
 - Editor-based calls use separate browser sessions. Independent calls may run concurrently, subject to available CPU, memory, and browser resources.
 - File-producing tools return JSON containing the output path, MIME type and size. For video output, supply a filename without an extension to let the browser choose .mp4 or .webm.
@@ -81,6 +82,15 @@ The MCP workspace restriction is separate from your agent host's own filesystem 
 | roomsuite_info | Lists capabilities, the resolved workspace and the configured server URL. |
 | roomsuite_list_files | List a workspace directory with file sizes and modification times, using offset/limit pagination. |
 | roomsuite_media_info | Inspect a local image, audio or video file's type, dimensions and duration without uploading it. |
+| roomsuite_shared_list, roomsuite_shared_search | Browse a shared folder or search filenames and paths across the server workspace. Search returns at most 200 matches and reports `truncated` if the scan was limited. |
+| roomsuite_shared_upload, roomsuite_shared_download | Transfer a file between the agent's MCP workspace and the server shared workspace; existing destination files are never overwritten. |
+| roomsuite_shared_mkdir, roomsuite_shared_move, roomsuite_shared_delete | Create a folder, move or rename a file/folder, or delete it; folder deletion requires `recursive: true`. |
+| notesroom_list, notesroom_get | Search notes by text, folder or tag; read Markdown, metadata, revision and a RoomSuite URL. |
+| notesroom_create, notesroom_update, notesroom_delete | Create, edit or delete notes. Updates and deletions require the current `base_revision`. |
+| notesroom_folders, notesroom_delete_folder | List or create nested folders, or delete an empty folder. |
+| paintroom_list, paintroom_get | List or read saved PaintRoom projects and their editable layers. |
+| paintroom_create, paintroom_edit | Create artwork with an optional shared image, add shapes or strokes, and change layer transforms using the current revision. |
+| paintroom_export | Export a saved project to the MCP workspace as PNG, `.paintroom`, or SVG for artwork without images or eraser strokes. PNG uses a local browser. |
 | pixelroom_edit | Adjust brightness, contrast or saturation; optionally run local subject removal and crop; export PNG, JPEG or WebP. |
 | soundroom_edit | Trim, normalize, change gain, apply fades and export WAV. |
 | vectorroom_create | Create shapes, text and Bézier paths; export SVG, PNG or an editable .vectorroom project. |
@@ -109,6 +119,18 @@ For example, an agent can call vectorroom_create with:
 ~~~
 
 It can then use cover.png as an input to pixelroom_edit or cliproom_render. Run roomsuite_info first if the agent needs to discover the configured workspace.
+
+## Shared-file workflow
+
+For an image uploaded from a phone, an agent can use these calls in order (replace names and IDs with the returned values):
+
+1. `roomsuite_shared_search` with `{"query":"photo"}` finds its server path, such as `Phone/photo.jpg`.
+2. `paintroom_create` with `{"name":"Launch artwork","shared_image":"Phone/photo.jpg","elements":[{"type":"rect","x":20,"y":20,"x2":180,"y2":100,"color":"#ff0000"}]}` creates an editable project. `paintroom_edit` can add strokes or change a layer, using its returned `project_id` and latest `revision` as `base_revision`.
+3. `paintroom_export` with `{"project_id":"<id>","format":"png","output":"launch.png"}` writes a local agent-workspace file. Optionally use `roomsuite_shared_upload` with `{"input":"launch.png","path":"Launch/launch.png"}` to make it available to other devices (create `Launch` first).
+4. Call `cliproom_render` twice with different output names and keyframes, using `launch.png` as the input. It imports its own server-library copy; see [Animate a video](#animate-a-video).
+5. `notesroom_create` can save Markdown documenting the artwork's returned URL, video outputs and project decisions. Its returned URL can be opened by other authorized devices.
+
+Saved notes and PaintRoom projects use server revisions to reject conflicting writes. These tools inherit the suite's trusted-device access model; they do not add individual user accounts. See the main README for storage limits and independent backups.
 
 ## Animate a video
 

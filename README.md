@@ -1,14 +1,17 @@
 # RoomSuite
 
-RoomSuite is a self-hosted set of creative tools. One launcher opens each editor in its own tab or window, so you can work in several rooms at once:
+RoomSuite is a self-hosted workspace for creative work, notes and shared files. One launcher opens each room in its own tab or window, so you can work in several rooms at once:
 
 - **PixelRoom** — photo editing, layers, text and local subject/text isolation.
 - **Cliproom** — a multitrack video editor with a server-backed media and project library.
 - **SoundRoom** — record or import audio, select, trim, cut, mark splits, adjust volume and fades, and export WAV.
 - **CaptureRoom** — arrange screen, camera, microphone, image and text sources into scenes and record them.
 - **VectorRoom** — create shapes, text and editable Bézier paths, with solid or gradient fills and SVG/PNG export.
+- **NotesRoom** — write Markdown notes, organize them into folders with tags, and search and autosave them on the server.
+- **PaintRoom** — paint and draw on a layered canvas, import images, transform layers, and save editable artwork.
+- **Shared files** — upload, search, organize and transfer files between your devices and rooms.
 
-SoundRoom, CaptureRoom and VectorRoom run in the browser. Their sessions are separate for each tab, and there is no application-imposed limit on the number of open rooms. Available memory, camera access, browser behavior and device performance still affect how many can be used at once.
+Sessions are separate for each tab, and there is no application-imposed limit on the number of open rooms. Available memory, camera access, browser behavior and device performance still affect how many can be used at once.
 
 ## Start RoomSuite
 
@@ -22,11 +25,11 @@ node server.js
 
 On the server itself, open **http://127.0.0.1:8090/** and choose a room. The suite runs on Cliproom's existing server; starting the standalone Cliproom server still starts Cliproom on its own as before. Stop the server with Ctrl+C.
 
-The suite uses the existing CLIPROOM_PORT, CLIPROOM_DATA, and CLIPROOM_ALLOWED_HOSTS environment variables. By default, Cliproom projects and uploaded media are stored in the cliproom/data/ directory. Back up that entire directory, including projects/ and assets/, with the service stopped.
+The suite uses the existing `CLIPROOM_PORT`, `CLIPROOM_DATA`, and `CLIPROOM_ALLOWED_HOSTS` environment variables. Cliproom projects and media default to `cliproom/data/`; notes, PaintRoom projects and shared files default to `cliproom/data/workspace/`. Set `ROOMSUITE_DATA` to put the latter in a separate persistent directory. See [Storage and backups](#storage-and-backups) before deploying. An adaptable systemd example is in [deploy/roomsuite.service.example](deploy/roomsuite.service.example).
 
 ## Use it on other devices
 
-The server listens on loopback only and has **no built-in login**. For selected devices, use HTTPS through Tailscale Serve and configure tailnet access rules to allow only those devices. Anyone who can reach the server can access and change all Cliproom projects and uploaded media. Follow the detailed instructions in [Cliproom's guide](cliproom/README.md#share-with-selected-tailscale-devices); start the root server instead of the standalone Cliproom server to serve the whole suite.
+The server listens on loopback only and has **no built-in login or per-user permissions**. For selected devices, use HTTPS through Tailscale Serve and configure tailnet access rules to allow only trusted devices. Anyone who can reach the server can read, change and delete all shared files, notes, artwork, Cliproom projects and uploaded media. Follow the detailed instructions in [Cliproom's guide](cliproom/README.md#share-with-selected-tailscale-devices); start the root server instead of the standalone Cliproom server to serve the whole suite.
 
 For example, after setting up Tailscale and its access policy, run the suite with the exact Tailscale host and port allowed:
 
@@ -45,11 +48,38 @@ Open the HTTPS URL reported by Tailscale on an authorized device. Camera, microp
 
 ## Work between rooms
 
-Each room opens as a separate session. Starting another tab does not replace your current work. PixelRoom and the three new rooms process their media on the device. Cliproom imports media into its server library.
+Each room opens as a separate session. Starting another tab does not replace your current work. Notes and saved PaintRoom projects persist on the server. The other browser editors keep their current sessions in memory unless you save or export them; Cliproom also has its own server-backed project and media library.
+
+Open **Shared files** to upload files from any authorized device, make folders, search, download, rename, move and delete. Use **Open in…** on a supported file or each room's shared-file button to bring it into an editor. Save exports back through the shared-file picker. The file type must be supported by the receiving room; shared files and Cliproom's media library are separate, so importing into Cliproom creates a library copy.
 
 SoundRoom and CaptureRoom have a **Send to Cliproom** button; VectorRoom can send a PNG. Sending is an explicit upload to your Cliproom server. Once the upload completes, select **Open in Cliproom** to add it to a new Cliproom project. Save that project in Cliproom if you want to reopen it later. Media remains on the server after an upload even if it is not added to a saved project; consult the Cliproom guide for storage and backup details.
 
-Choose **Your projects** in the launcher's **Your space** card to open the saved Cliproom projects browser in a separate window. Open a project or delete it after confirmation. Deleting a project removes its saved timeline but keeps uploaded media, which may be shared by other projects. Other rooms' work is stored or exported on the device and is not listed in this server project browser.
+Choose **Your projects** in the launcher's **Your space** card to open the saved Cliproom projects browser in a separate window. Open a project or delete it after confirmation. Deleting a project removes its saved timeline but keeps uploaded media, which may be shared by other projects. PaintRoom has its own **Open** project browser; NotesRoom lists its notes in its sidebar.
+
+## NotesRoom
+
+Create notes and nested folders, add comma-separated tags, and search by title, body or tag. Changes autosave after a short pause. The preview supports common Markdown headings, lists, emphasis, code blocks, quotes and links; the source remains plain Markdown and unsupported syntax is preserved. Notes can be linked from any room or exported as `.md` to shared files. The server rejects an out-of-date save or deletion; use **Save as a copy** to preserve local changes or **Reload latest** to discard them. Folders must be empty before they can be deleted.
+
+## PaintRoom
+
+Draw with a brush or eraser, make lines, rectangles and ellipses, and move, reorder, hide or transform layers. Import a supported raster image as a layer. **Save** stores an editable project on the server; **Open** reopens or deletes it, and **Save a copy** resolves a concurrent edit. Export PNG or an editable `.paintroom` file to the device or shared files. SVG export is available for vector-only work without embedded images or eraser strokes. Use **Send to Cliproom** or export a PNG through shared files to animate it there. Projects embed imported images, which are limited to 20 MiB each; editable projects are limited to 32 MiB.
+
+## Storage and backups
+
+`ROOMSUITE_MAX_FILE_BYTES` defaults to 536870912 (512 MiB per shared upload), and `ROOMSUITE_MAX_STORAGE_BYTES` defaults to 5368709120 (5 GiB total for shared files, notes and PaintRoom projects). Both accept positive integer byte counts. Cliproom's existing media library is separate and is not counted in this quota. File names and paths are validated, uploads cannot overwrite existing files, and downloads are served as attachments. Notes and PaintRoom projects use revision checks to prevent silent overwrites. Limits assume one RoomSuite server process owns the data directory; avoid modifying it directly while the service is running.
+
+Use a dedicated unprivileged service account, keep both data directories writable only by that account, and store them outside the Git checkout. The default `cliproom/data/` and `roomsuite-data/` locations are ignored by Git, but a custom `ROOMSUITE_DATA` path inside the checkout is not automatically ignored. Never commit user data or private service settings. Repository backups cover the source and example configuration, not the data or a working restore.
+
+Back up **both** `CLIPROOM_DATA` and `ROOMSUITE_DATA` independently of GitHub. Stop the service first for a consistent snapshot, then run the included Linux backup script with the same data paths as the service:
+
+~~~sh
+mkdir -p /srv/roomsuite-backups
+CLIPROOM_DATA=/var/lib/roomsuite/cliproom \
+ROOMSUITE_DATA=/var/lib/roomsuite/workspace \
+  sh scripts/backup-roomsuite.sh /srv/roomsuite-backups
+~~~
+
+The script creates private timestamped tar archives and checks that they can be read. When the workspace is inside Cliproom's data directory, it is already included in that archive. Restart the service afterward. Copy backups to independent storage, schedule regular backups using a maintenance window or filesystem snapshot, and periodically test restoration. To restore, stop the service, extract each archive into its corresponding empty data directory (`tar -xzf archive.tar.gz -C /path/to/data`), set ownership to the service account, then start the service. Backups contain private user data; restrict and protect them accordingly. The example service and script are provided for deployment; they do not configure a running server or scheduled backups automatically.
 
 ## SoundRoom
 
@@ -77,8 +107,8 @@ Draw rectangles, ellipses, lines and text. With the pen, click to add points and
 node --test cliproom/tests/*.test.js tests/*.test.js
 ~~~
 
-The tests cover the existing timeline and server behavior, suite routes and static asset handling, and upload/metadata handoff.
+The tests cover the existing timeline and server behavior, suite routes, shared storage limits and revision conflicts. Browser and MCP integration checks are documented in the [MCP guide](mcp/README.md#verify).
 
 ## Coding agents
 
-The optional [RoomSuite MCP server](mcp/README.md) lets coding agents inspect files and media, manage Cliproom projects, and create images, audio, vector artwork and animated videos through the rooms. It runs separately from the normal application and uses isolated browser sessions. Cliproom also offers a [headless project render endpoint](cliproom/README.md#render-from-a-program).
+The optional [RoomSuite MCP server](mcp/README.md) lets coding agents search and transfer shared files, create and organize notes, edit and export PaintRoom artwork, manage Cliproom projects, and produce images, audio and animated videos through the rooms. It runs separately from the normal application and uses isolated browser sessions. Cliproom also offers a [headless project render endpoint](cliproom/README.md#render-from-a-program).

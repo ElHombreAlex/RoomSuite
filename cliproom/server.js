@@ -23,7 +23,7 @@ const MAX_PROJECT = 2 * 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const mediaTypes = new Set(['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-m4v', 'video/mpeg', 'audio/mpeg', 'audio/mp4', 'audio/x-m4a', 'audio/ogg', 'audio/wav', 'audio/wave', 'audio/x-wav', 'audio/webm', 'audio/aac', 'audio/flac', 'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif']);
 const publicFiles = { '/': ['index.html', 'text/html; charset=utf-8'], '/index.html': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/timeline.js': ['timeline.js', 'text/javascript; charset=utf-8'], '/offline-render.js': ['offline-render.js', 'text/javascript; charset=utf-8'], '/styles.css': ['styles.css', 'text/css; charset=utf-8'] };
-const suiteRoots = { '/suite/': 'suite', '/soundroom/': 'SoundRoom', '/captureroom/': 'CaptureRoom', '/vectorroom/': 'VectorRoom', '/pixelroom/': 'PixelRoom/dist' };
+const suiteRoots = { '/suite/': 'suite', '/soundroom/': 'SoundRoom', '/captureroom/': 'CaptureRoom', '/vectorroom/': 'VectorRoom', '/pixelroom/': 'PixelRoom/dist', '/notesroom/':'NotesRoom', '/paintroom/':'PaintRoom', '/files/':'FilesRoom' };
 const suiteTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.onnx': 'application/octet-stream', '.bin': 'application/octet-stream', '.gz': 'application/gzip', '.txt': 'text/plain; charset=utf-8', '.woff': 'font/woff', '.woff2': 'font/woff2' };
 const locks = new Map();
 
@@ -91,6 +91,7 @@ async function sendFile(req, res, file, type, asset = false) {
   if (req.method === 'HEAD' || stat.size === 0) return res.end();
   fs.createReadStream(file, { start, end }).on('error', () => res.destroy()).pipe(res);
 }
+const sharedWorkspace = SUITE_MODE ? require('../workspace/service').createWorkspace({ dataDir:DATA, checkWrite, json, sendFile }) : null;
 
 async function route(req, res) {
   headers(res);
@@ -98,7 +99,7 @@ async function route(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const pathname = url.pathname;
   if (SUITE_MODE && (req.method === 'GET' || req.method === 'HEAD')) {
-    if (['/cliproom', '/soundroom', '/captureroom', '/vectorroom', '/pixelroom'].includes(pathname)) {
+    if (['/cliproom', '/soundroom', '/captureroom', '/vectorroom', '/pixelroom', '/notesroom', '/paintroom', '/files'].includes(pathname)) {
       res.writeHead(308, { Location: pathname + '/' }); return res.end();
     }
     if (pathname === '/' || pathname === '/index.html') {
@@ -119,6 +120,7 @@ async function route(req, res) {
       return sendFile(req, res, file, type);
     }
   }
+  if (sharedWorkspace && await sharedWorkspace.route(req,res,url)) return;
   if (req.method === 'GET' && pathname === '/api/health') return json(res, 200, { ok: true });
   if ((req.method === 'GET' || req.method === 'HEAD') && pathname === '/api/render/mediabunny.mjs') {
     const bundle = path.join(SUITE_ROOT, 'mcp', 'node_modules', 'mediabunny', 'dist', 'bundles', 'mediabunny.min.mjs');
@@ -241,6 +243,7 @@ async function route(req, res) {
 
 async function start() {
   await Promise.all([fsp.mkdir(PROJECTS, { recursive: true, mode: 0o700 }), fsp.mkdir(ASSETS, { recursive: true, mode: 0o700 })]);
+  if (sharedWorkspace) await sharedWorkspace.init();
   const server = http.createServer((req, res) => route(req, res).catch(e => {
     if (e.code === 'ENOENT') return json(res, 404, { error: 'Not found.' });
     if (!e.status) console.error('Request failed:', e.message);

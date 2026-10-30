@@ -22,7 +22,7 @@ function outputWithExtension(requested, ext) {
   if (existing !== ext) throw new Error('This browser will export ' + ext + '. Use that extension or omit the extension from output.');
   return requested;
 }
-async function withRoom(room, expectedTitle, signal, callback) {
+export async function withRoom(room, expectedTitle, signal, callback) {
   let browser;
   let abort;
   try {

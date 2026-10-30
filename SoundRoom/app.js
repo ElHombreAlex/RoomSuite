@@ -27,7 +27,7 @@ function render() {
   $('trackName').textContent = has ? title : 'Your waveform';
   $('fileInfo').textContent = has ? buffer.numberOfChannels + ' CH · ' + Math.round(buffer.sampleRate / 1000) + ' KHZ' : 'NO AUDIO YET';
   $('duration').textContent = time(duration); $('position').textContent = time(cursor);
-  for (const id of ['play','export','normalize','selectAll','selectionStart','selectionEnd','playhead','split','send']) $(id).disabled = !has;
+  for (const id of ['play','export','normalize','selectAll','selectionStart','selectionEnd','playhead','split','send','saveSharedAudio']) $(id).disabled = !has;
   $('undo').disabled = !undo.length; $('trim').disabled = !has || !selection; $('cut').disabled = !has || !selection;
   $('clearSelection').disabled = !selection; $('exportPart').disabled = !has || (!selection && !markers.length);
   $('selectionStart').max = duration; $('selectionEnd').max = duration; $('playhead').max = duration;
@@ -187,6 +187,9 @@ $('play').addEventListener('click', async () => {
 });
 $('export').addEventListener('click', () => { try { download(makeWav([0, buffer.duration]), title + '.wav'); status('WAV exported.'); } catch (error) { status(error.message, true); } });
 $('exportPart').addEventListener('click', () => { try { download(makeWav(partRange()), title + '-part.wav'); status('Current part exported.'); } catch (error) { status(error.message, true); } });
+$('openSharedAudio').addEventListener('click',async()=>{try{const file=await RoomShared.choose(['audio/*']);if(file)await openBlob(file,file.name);}catch(error){status(error.message,true);}});
+$('saveSharedAudio').addEventListener('click',async()=>{try{const path=await RoomShared.save(makeWav([0,buffer.duration]),title+'.wav');if(path)status('Saved to shared files: '+path);}catch(error){status(error.message,true);}});
+(async()=>{try{const file=await RoomShared.fromQuery();if(file)await openBlob(file,file.name);}catch(error){status(error.message,true);}})();
 $('send').addEventListener('click', async () => {
   try { $('send').disabled = true; status('Preparing WAV…'); await new Promise(resolve => setTimeout(resolve, 20)); const wav = makeWav([0, buffer.duration]); await RoomHandoff.send(wav, title + '.wav', buffer.duration, $('status'), $('openCliproom')); }
   catch (error) { status(error.message, true); } finally { $('send').disabled = !buffer; }

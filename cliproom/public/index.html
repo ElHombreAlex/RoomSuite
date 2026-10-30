@@ -6,6 +6,8 @@
   <meta name="theme-color" content="#f7f7f5">
   <title>Cliproom — your story, in motion</title>
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/suite/shared.css">
+  <script defer src="/suite/shared.js"></script>
   <script defer src="/timeline.js"></script>
   <script defer src="/app.js"></script>
 </head>
@@ -47,6 +49,7 @@
         <strong>Bring in your media</strong><small>Video, photos &amp; audio</small><span class="upload-pill">Choose files</span>
       </button>
       <input id="fileInput" type="file" accept="video/*,audio/*,image/png,image/jpeg,image/webp,image/gif,image/avif" multiple hidden>
+      <button class="tiny-button wide-tiny hidden" id="openSharedMedia" hidden>Open from shared files</button>
       <div class="library-targets"><label>ADD VIDEO TO<select id="videoTarget" aria-label="Track for new video"></select></label><label>ADD AUDIO TO<select id="audioTarget" aria-label="Track for new audio"></select></label></div>
       <div class="section-label"><span>YOUR LIBRARY</span><span id="assetCount">0</span></div>
       <div id="mediaList" class="media-list"><div class="empty-library"><span>✦</span><p>Your media will be here,<br>ready when you are.</p></div></div>
@@ -80,7 +83,7 @@
   </main>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <dialog id="projectsDialog" class="dialog"><div class="dialog-head"><div><p class="eyebrow">CONTINUE YOUR STORY</p><h2>Saved projects<span class="purple">.</span></h2></div><button class="icon-button close-dialog" data-close="projectsDialog" aria-label="Close">✕</button></div><p class="intro">Open or delete a Cliproom project saved on this server. Deleting a project keeps its uploaded media.</p><div id="projectList" class="project-list"></div><p id="projectsStatus" class="mini-hint projects-status" role="status" aria-live="polite"></p><div class="dialog-actions"><button class="button button-outline" id="newProjectBtn">New project</button><button class="button button-quiet close-dialog" data-close="projectsDialog">Close</button></div></dialog>
-  <dialog id="exportDialog" class="dialog"><div class="dialog-head"><div><p class="eyebrow">READY WHEN YOU ARE</p><h2>Export your video<span class="purple">.</span></h2></div><button class="icon-button close-dialog" data-close="exportDialog" aria-label="Close">✕</button></div><p class="intro">Your browser renders the timeline in real time, including its sound and titles.</p><div class="export-card"><span class="export-icon"><svg><use href="#i-film"/></svg></span><div><strong id="exportSummary">Video</strong><p id="exportFormat">Checking available formats…</p></div></div><p class="mini-hint">Keep this tab open and in the foreground until the download is ready. Large projects need more time and device memory.</p><div id="exportProgressWrap" class="hidden"><div class="progress"><span id="exportProgress"></span></div><p id="exportStatus" class="mini-hint" role="status"></p></div><div class="dialog-actions"><button class="button button-outline close-dialog" data-close="exportDialog" id="exportCancelBtn">Cancel</button><button class="button button-accent" id="startExportBtn"><svg><use href="#i-download"/></svg> Export video</button></div></dialog>
+  <dialog id="exportDialog" class="dialog"><div class="dialog-head"><div><p class="eyebrow">READY WHEN YOU ARE</p><h2>Export your video<span class="purple">.</span></h2></div><button class="icon-button close-dialog" data-close="exportDialog" aria-label="Close">✕</button></div><p class="intro">Your browser renders the timeline in real time, including its sound and titles.</p><div class="export-card"><span class="export-icon"><svg><use href="#i-film"/></svg></span><div><strong id="exportSummary">Video</strong><p id="exportFormat">Checking available formats…</p></div></div><p class="mini-hint">Keep this tab open and in the foreground until the download is ready. Large projects need more time and device memory.</p><div id="exportProgressWrap" class="hidden"><div class="progress"><span id="exportProgress"></span></div><p id="exportStatus" class="mini-hint" role="status"></p></div><div class="dialog-actions"><button class="button button-outline close-dialog" data-close="exportDialog" id="exportCancelBtn">Cancel</button><button class="button button-outline hidden" id="sharedExportBtn" hidden>Save to shared files</button><button class="button button-accent" id="startExportBtn"><svg><use href="#i-download"/></svg> Export video</button></div></dialog>
   <dialog id="conflictDialog" class="dialog"><div class="dialog-head"><div><p class="eyebrow">PROJECT CHANGED</p><h2>Keep your work<span class="purple">.</span></h2></div></div><p class="intro">This project was saved on another device since you opened it. Save your current version as a separate copy, or close this message and open the latest version.</p><div class="dialog-actions"><button class="button button-outline close-dialog" data-close="conflictDialog">Close</button><button class="button button-accent" id="saveCopyBtn">Save as a copy</button></div></dialog>
 </body>
 </html>

@@ -222,11 +222,16 @@ function validateDocument(doc) {
     return item;
   });
 }
-$('openProject').addEventListener('change', async event => {
-  const file = event.target.files[0]; if (!file) return;
+async function openProjectFile(file) {
+  if (!file) return;
   try { if (file.size > 8 * 1024 * 1024) throw new Error('Project file is too large.'); const next = validateDocument(JSON.parse(await file.text())); change(() => { objects = next; selected = null; draft = null; }); status('Project opened.'); }
-  catch (error) { status('Could not open project: ' + error.message, true); } finally { event.target.value = ''; }
-});
+  catch (error) { status('Could not open project: ' + error.message, true); }
+}
+$('openProject').addEventListener('change', async event => { const file=event.target.files[0];event.target.value='';await openProjectFile(file); });
+$('openSharedVector').addEventListener('click',async()=>{try{const file=await RoomShared.choose(['.vectorroom']);if(file)await openProjectFile(file);}catch(e){status(e.message,true);}});
+$('saveSharedVector').addEventListener('click',async()=>{try{const path=await RoomShared.save(await pngBlob(),'vectorroom-artwork.png');if(path)status('Saved to shared files: '+path);}catch(e){status(e.message,true);}});
+$('saveSharedVectorProject').addEventListener('click',async()=>{try{const path=await RoomShared.save(new Blob([JSON.stringify({format:'vectorroom',version:1,objects})],{type:'application/json'}),'artwork.vectorroom');if(path)status('Saved to shared files: '+path);}catch(e){status(e.message,true);}});
+(async()=>{try{const file=await RoomShared.fromQuery();if(file)await openProjectFile(file);}catch(e){status(e.message,true);}})();
 document.addEventListener('keydown', event => {
   if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); $('undo').click(); }

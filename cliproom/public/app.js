@@ -30,6 +30,7 @@ const audioGesture = T.createAudioClickGesture({ onCut:cutAudio, onOptions:(clip
 let undoStack = [], redoStack = [], currentTime = 0, playing = false, playClock = 0, frameId = 0, lastDrawTime = 0, playbackGeneration = 0;
 let audioContext = null, outputAudio = null, silentAudio = null, activeMedia = new Set(), recorder = null, recording = false, exportPreparing = false, cancelRecording = false, exportGeneration = 0;
 let saveInProgress = false, mediaBusy = false, statusTimer = 0;
+let exportToShared = false;
 const elements = new Map(), images = new Map();
 const canvas = $('canvas'), context = canvas.getContext('2d');
 
@@ -733,13 +734,14 @@ function showExport() {
   if (!totalDuration() || recording) return;
   const format = formatSupport(); $('exportSummary').textContent = `${state.aspect} · ${state.quality} · ${seconds(totalDuration())}`;
   $('exportFormat').textContent = format ? `${format.label} · format available in this browser` : 'Export is not supported by this browser.';
-  $('startExportBtn').disabled = !format; $('exportProgressWrap').classList.add('hidden'); $('exportDialog').showModal();
+  $('startExportBtn').disabled = !format; $('sharedExportBtn').disabled = !format; $('exportProgressWrap').classList.add('hidden'); $('exportDialog').showModal();
 }
 async function exportVideo() {
   const format = formatSupport(); if (!format || recording || exportPreparing) return;
+  const shared = exportToShared; exportToShared = false;
   const generation = ++exportGeneration;
   let stream = null;
-  exportPreparing = true; cancelRecording = false; $('startExportBtn').disabled = true;
+  exportPreparing = true; cancelRecording = false; $('startExportBtn').disabled = true; $('sharedExportBtn').disabled = true;
   $('exportCancelBtn').textContent = 'Cancel export'; $('exportProgressWrap').classList.remove('hidden');
   $('exportStatus').textContent = 'Preparing media…';
   try {
@@ -751,22 +753,23 @@ async function exportVideo() {
     const chunks = []; recorder = new MediaRecorder(stream, { mimeType: format.mime, videoBitsPerSecond: state.quality === '1080p' ? 8000000 : 4500000 });
     recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
     recorder.onerror = () => { cancelRecording = true; notify('Export failed in this browser.', 7000); };
-    recorder.onstop = () => {
-      recording = false; $('startExportBtn').disabled = false; $('exportCancelBtn').textContent = 'Cancel';
+    recorder.onstop = async () => {
+      recording = false; $('startExportBtn').disabled = false; $('sharedExportBtn').disabled = false; $('exportCancelBtn').textContent = 'Cancel';
       stream.getVideoTracks().forEach(track => track.stop());
-      if (!cancelRecording && chunks.length) {
-        const url = URL.createObjectURL(new Blob(chunks, { type: format.mime })), a = document.createElement('a');
-        a.href = url; a.download = (state.name.trim().replace(/[\\/:*?"<>|]+/g, '-') || 'cliproom-video') + '.' + format.extension; a.click(); setTimeout(() => URL.revokeObjectURL(url), 60000);
-        $('exportDialog').close(); notify('Your video is ready.');
-      } else if (!cancelRecording) notify('The browser did not produce a video.', 7000);
       recorder = null; render();
+      if (!cancelRecording && chunks.length) {
+        const blob = new Blob(chunks, { type: format.mime }), name = (state.name.trim().replace(/[\\/:*?"<>|]+/g, '-') || 'cliproom-video') + '.' + format.extension;
+        $('exportDialog').close();
+        if (shared && window.RoomShared) { try { const path=await RoomShared.save(blob,name); if(path)notify('Saved to shared files: '+path); } catch(error) { notify(error.message,7000); } }
+        else { const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);notify('Your video is ready.'); }
+      } else if (!cancelRecording) notify('The browser did not produce a video.', 7000);
     };
     const started = await startPlayback(true, () => { exportPreparing = false; recording = true; recorder.start(1000); });
     if (!started) { stream.getVideoTracks().forEach(track => track.stop()); recorder = null; }
   } catch (error) {
     if (stream && (!recorder || recorder.state === 'inactive')) stream.getVideoTracks().forEach(track => track.stop());
     if (generation !== exportGeneration) return;
-    exportPreparing = false; $('startExportBtn').disabled = false; $('exportCancelBtn').textContent = 'Cancel';
+    exportPreparing = false; $('startExportBtn').disabled = false; $('sharedExportBtn').disabled = false; $('exportCancelBtn').textContent = 'Cancel';
     cancelRecording = true; if (recorder && recorder.state !== 'inactive') recorder.stop(); else recording = false;
     stopPlayback(); $('exportStatus').textContent = error.message || 'Could not start export.'; notify(error.message || 'Could not start export.', 7000);
   }
@@ -1002,16 +1005,21 @@ $('canvasFrame').addEventListener('pointerup', event => {
 $('canvasFrame').addEventListener('pointercancel', event => {
   if (!stageDrag || event.pointerId !== stageDrag.pointerId) return; state = JSON.parse(stageDrag.before); stageDrag = null; render();
 });
-$('exportBtn').addEventListener('click', showExport); $('startExportBtn').addEventListener('click', exportVideo);
+$('exportBtn').addEventListener('click', showExport); $('startExportBtn').addEventListener('click', () => { exportToShared=false; exportVideo(); });
+if (window.RoomShared) {
+  $('openSharedMedia').hidden=false; $('sharedExportBtn').hidden=false; $('openSharedMedia').classList.remove('hidden'); $('sharedExportBtn').classList.remove('hidden');
+  $('openSharedMedia').addEventListener('click',async()=>{try{const file=await RoomShared.choose(['image/*','audio/*','video/*']);if(file)await importFiles([file]);}catch(error){notify(error.message,7000);}});
+  $('sharedExportBtn').addEventListener('click',()=>{exportToShared=true;exportVideo();});
+}
 document.querySelectorAll('.close-dialog').forEach(button => button.addEventListener('click', () => {
   if (button.dataset.close === 'exportDialog' && (recording || exportPreparing)) {
-    cancelRecording = true; if (exportPreparing) { exportGeneration++; exportPreparing = false; $('startExportBtn').disabled = false; }
+    cancelRecording = true; if (exportPreparing) { exportGeneration++; exportPreparing = false; $('startExportBtn').disabled = false; $('sharedExportBtn').disabled = false; }
     stopPlayback(); if (recorder && recorder.state !== 'inactive') recorder.stop();
   }
   $(button.dataset.close).close();
 }));
 $('exportDialog').addEventListener('cancel', e => { if (recording || exportPreparing) { e.preventDefault(); notify('Use Cancel export to stop the current render.'); } });
-document.addEventListener('visibilitychange', () => { if (document.hidden && (recording || exportPreparing)) { cancelRecording = true; if (exportPreparing) { exportGeneration++; exportPreparing = false; $('startExportBtn').disabled = false; } stopPlayback(); if (recorder && recorder.state !== 'inactive') recorder.stop(); notify('Export stopped because the tab was hidden. Keep it visible while exporting.', 7000); } });
+document.addEventListener('visibilitychange', () => { if (document.hidden && (recording || exportPreparing)) { cancelRecording = true; if (exportPreparing) { exportGeneration++; exportPreparing = false; $('startExportBtn').disabled = false; $('sharedExportBtn').disabled = false; } stopPlayback(); if (recorder && recorder.state !== 'inactive') recorder.stop(); notify('Export stopped because the tab was hidden. Keep it visible while exporting.', 7000); } });
 document.addEventListener('keydown', e => {
   if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || document.querySelector('dialog[open]')) return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); applyHistory(e.shiftKey ? 'redo' : 'undo'); }
@@ -1073,4 +1081,6 @@ const launchParams = new URLSearchParams(location.search);
 if (launchParams.get('projects') === '1' && !launchParams.has('asset')) {
   window.history.replaceState(null, '', location.pathname);
   showProjects();
+} else if (launchParams.has('shared_file') && window.RoomShared) {
+  RoomShared.fromQuery().then(file=>file && importFiles([file])).catch(error=>notify(error.message,7000));
 } else importRoomHandoff();

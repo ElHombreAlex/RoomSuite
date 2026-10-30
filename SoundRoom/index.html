@@ -2,15 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#f8f8f6">
-  <title>SoundRoom — shape your sound</title><link rel="stylesheet" href="/suite/common.css"><link rel="stylesheet" href="style.css">
-  <script defer src="/suite/handoff.js"></script><script defer src="app.js"></script>
+  <title>SoundRoom — shape your sound</title><link rel="stylesheet" href="/suite/common.css"><link rel="stylesheet" href="/suite/shared.css"><link rel="stylesheet" href="style.css">
+  <script defer src="/suite/shared.js"></script><script defer src="/suite/handoff.js"></script><script defer src="app.js"></script>
 </head>
 <body>
   <header class="topbar"><a class="logo" href="/"><span class="logo-mark">✳</span><span>room<span class="dot">suite</span></span></a><span class="top-divider"></span><span class="top-title">SoundRoom / Audio editor</span><div class="top-actions"><button id="undo" class="btn" disabled>↶ Undo</button><button id="export" class="btn primary" disabled>↓ Export WAV</button></div></header>
   <div class="editor-layout">
     <aside class="panel left">
       <div class="eyebrow">YOUR AUDIO SPACE</div><h1 class="section-title">SoundRoom<span class="dot">.</span></h1><p class="hint">A little space to make your sound just right.</p>
-      <div class="panel-section"><p class="subhead">Bring in audio</p><label class="upload" for="audioFile"><strong>＋ &nbsp;Choose an audio file</strong><span>MP3, WAV and other formats your browser supports</span></label><input class="sr-only" id="audioFile" type="file" accept="audio/*"><button id="record" class="btn block" style="margin-top:8px">● &nbsp;Record microphone</button><p class="hint">Recording uses your device’s microphone, with your permission.</p></div>
+      <div class="panel-section"><p class="subhead">Bring in audio</p><label class="upload" for="audioFile"><strong>＋ &nbsp;Choose an audio file</strong><span>MP3, WAV and other formats your browser supports</span></label><input class="sr-only" id="audioFile" type="file" accept="audio/*"><button id="openSharedAudio" class="btn block" style="margin-top:8px">Open shared audio</button><button id="record" class="btn block" style="margin-top:8px">● &nbsp;Record microphone</button><p class="hint">Recording uses your device’s microphone, with your permission.</p></div>
       <div class="panel-section"><p class="subhead">Make the cut</p><div class="stack"><button id="trim" class="btn" disabled>Trim to selection</button><button id="cut" class="btn" disabled>Cut selection</button><button id="split" class="btn" disabled>Split at playhead</button></div><p class="hint">Drag over the waveform to select a range. Split marks make it easy to export individual parts.</p></div>
     </aside>
     <main class="main">
@@ -23,7 +23,7 @@
     <aside class="panel right"><div class="eyebrow">THE DETAILS</div><h2 class="section-title">Fine tune<span class="dot">.</span></h2><p class="hint">Changes are applied when you play or export.</p>
       <div class="panel-section"><label class="field"><span>Volume · <output id="gainValue">100%</output></span><input id="gain" type="range" min="0" max="300" value="100"></label><button id="normalize" class="btn block" disabled>Normalize level</button></div>
       <div class="panel-section"><label class="field"><span>Fade in (seconds)</span><input id="fadeIn" type="number" min="0" max="600" step=".1" value="0"></label><label class="field"><span>Fade out (seconds)</span><input id="fadeOut" type="number" min="0" max="600" step=".1" value="0"></label></div>
-      <div class="panel-section"><p class="subhead">Take it with you</p><button id="exportPart" class="btn block" disabled>↓ Export current part</button><button id="send" class="btn accent block" disabled style="margin-top:8px">Send to Cliproom</button><a id="openCliproom" class="btn block hidden" target="_blank" rel="noopener" href="/cliproom/" style="margin-top:8px">Open in Cliproom ↗</a><p class="hint">Sending uploads your WAV to your Cliproom server. Export saves it to your device.</p></div>
+      <div class="panel-section"><p class="subhead">Take it with you</p><button id="exportPart" class="btn block" disabled>↓ Export current part</button><button id="saveSharedAudio" class="btn block" disabled style="margin-top:8px">Save WAV to shared files</button><button id="send" class="btn accent block" disabled style="margin-top:8px">Send to Cliproom</button><a id="openCliproom" class="btn block hidden" target="_blank" rel="noopener" href="/cliproom/" style="margin-top:8px">Open in Cliproom ↗</a><p class="hint">Sending uploads your WAV to your Cliproom server. Export saves it to your device.</p></div>
       <div class="notice">Your audio stays in this tab until you export or choose to send it. Save a WAV before closing.</div>
     </aside>
   </div>
