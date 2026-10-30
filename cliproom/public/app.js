@@ -146,7 +146,7 @@ function renderInspector() {
   if (!item) {
     $('inspectorTitle').innerHTML = 'Project<span class="purple">.</span>';
     $('inspectorIntro').textContent = 'The little things make it yours.';
-    root.innerHTML = `<label class="field"><span>Canvas shape</span><select id="projectAspect">${option('16:9','Landscape · 16:9',state.aspect)}${option('9:16','Portrait · 9:16',state.aspect)}${option('1:1','Square · 1:1',state.aspect)}</select></label><label class="field"><span>Export size</span><select id="projectQuality">${option('720p','720p · lighter',state.quality)}${option('1080p','1080p · more detail',state.quality)}</select><small>Choose 720p for a lighter export on older devices.</small></label><div class="field"><span>Project storage</span><small>${revision ? 'Saved on this server. Use Save after editing.' : 'Not yet saved. Save to open on another device.'}</small></div>`;
+    root.innerHTML = `<label class="field"><span>Canvas shape</span><select id="projectAspect">${option('16:9','Landscape · 16:9',state.aspect)}${option('9:16','Portrait · 9:16',state.aspect)}${option('1:1','Square · 1:1',state.aspect)}</select></label><label class="field"><span>Export size</span><select id="projectQuality">${option('720p','720p · lighter',state.quality)}${option('1080p','1080p · more detail',state.quality)}</select><small>Choose 720p for a lighter export on older devices.</small></label><label class="field"><span>Canvas background</span><input id="projectBackground" type="color" value="${/^#[0-9a-f]{6}$/i.test(state.background||'')?state.background:'#26252e'}"><small>Fades reveal this color.</small></label><div class="field"><span>Project storage</span><small>${revision ? 'Saved on this server. Use Save after editing.' : 'Not yet saved. Save to open on another device.'}</small></div>`;
   } else if (selected.type === 'clip' || selected.type === 'audio') {
     const source = asset(item.assetId), isVideo = selected.type === 'clip';
     const tracks = isVideo ? state.videoTracks : state.audioTracks;
@@ -388,9 +388,21 @@ async function inspectFile(file, kind) {
     }
     const el = document.createElement(kind === 'audio' ? 'audio' : 'video'); el.preload = 'metadata'; el.src = objectUrl;
     await new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error('Reading this file timed out.')), 20000); el.onloadedmetadata = () => { clearTimeout(timer); resolve(); }; el.onerror = () => { clearTimeout(timer); reject(new Error('Your browser cannot decode this file.')); }; });
-    if (!Number.isFinite(el.duration) || el.duration <= 0) throw new Error('The file has no readable duration.');
-    return { duration: el.duration, width: el.videoWidth || 0, height: el.videoHeight || 0 };
+    const duration=await readableDuration(el);
+    return { duration, width: el.videoWidth || 0, height: el.videoHeight || 0 };
   } finally { URL.revokeObjectURL(objectUrl); }
+}
+async function readableDuration(media){
+  if(Number.isFinite(media.duration)&&media.duration>0)return media.duration;
+  // Older MediaRecorder WebM files have no duration in their header. Seeking
+  // to the end lets Chromium discover the final timestamp without guessing.
+  return new Promise((resolve,reject)=>{let timer;
+    const done=()=>{if(Number.isFinite(media.duration)&&media.duration>0){cleanup();resolve(media.duration);}};
+    const cleanup=()=>{clearTimeout(timer);for(const event of ['durationchange','timeupdate','seeked'])media.removeEventListener(event,done);media.removeEventListener('error',failed);};
+    const failed=()=>{cleanup();reject(new Error('The file has no readable duration.'));};
+    for(const event of ['durationchange','timeupdate','seeked'])media.addEventListener(event,done);media.addEventListener('error',failed);timer=setTimeout(failed,20000);
+    try{media.currentTime=1e101;done();}catch{failed();}
+  });
 }
 const fallbackTypes = { mp4:'video/mp4', m4v:'video/x-m4v', mov:'video/quicktime', webm:'video/webm', mp3:'audio/mpeg', m4a:'audio/mp4', wav:'audio/wav', ogg:'audio/ogg', flac:'audio/flac', png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg', webp:'image/webp', gif:'image/gif', avif:'image/avif' };
 async function importFiles(files) {
@@ -517,7 +529,7 @@ function updateStageSelection() {
   overlay.classList.remove('hidden');
 }
 function renderFrame(offlineVideoFrames = null) {
-  context.fillStyle = '#26252e'; context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = /^#[0-9a-f]{6}$/i.test(state.background||'') ? state.background : '#26252e'; context.fillRect(0, 0, canvas.width, canvas.height);
   const at = currentTime >= totalDuration() && totalDuration() > 0 ? Math.max(0, totalDuration() - .001) : currentTime;
   for (const track of state.videoTracks) {
     if (track.hidden) continue;
@@ -750,7 +762,7 @@ async function exportVideo() {
     if (generation !== exportGeneration) return;
     stream = canvas.captureStream(30);
     for (const track of outputAudio.stream.getAudioTracks()) stream.addTrack(track);
-    const chunks = []; recorder = new MediaRecorder(stream, { mimeType: format.mime, videoBitsPerSecond: state.quality === '1080p' ? 8000000 : 4500000 });
+    const chunks = [], exportDuration=totalDuration(); recorder = new MediaRecorder(stream, { mimeType: format.mime, videoBitsPerSecond: state.quality === '1080p' ? 8000000 : 4500000 });
     recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
     recorder.onerror = () => { cancelRecording = true; notify('Export failed in this browser.', 7000); };
     recorder.onstop = async () => {
@@ -758,7 +770,8 @@ async function exportVideo() {
       stream.getVideoTracks().forEach(track => track.stop());
       recorder = null; render();
       if (!cancelRecording && chunks.length) {
-        const blob = new Blob(chunks, { type: format.mime }), name = (state.name.trim().replace(/[\\/:*?"<>|]+/g, '-') || 'cliproom-video') + '.' + format.extension;
+        let blob = new Blob(chunks, { type: format.mime });const name = (state.name.trim().replace(/[\\/:*?"<>|]+/g, '-') || 'cliproom-video') + '.' + format.extension;
+        if(format.extension==='webm')try{blob=await RoomWebM.withDuration(blob,exportDuration);}catch(error){notify('The video is ready, but its duration metadata could not be added.',7000);}
         $('exportDialog').close();
         if (shared && window.RoomShared) { try { const path=await RoomShared.save(blob,name); if(path)notify('Saved to shared files: '+path); } catch(error) { notify(error.message,7000); } }
         else { const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);notify('Your video is ready.'); }
@@ -890,7 +903,7 @@ $('inspectorBody').addEventListener('change', e => {
   }
   change(() => {
     const item = selectedItem(), total = totalDuration();
-    if (id === 'projectAspect') state.aspect = value; if (id === 'projectQuality') state.quality = value;
+    if (id === 'projectAspect') state.aspect = value; if (id === 'projectQuality') state.quality = value;if(id==='projectBackground'&&/^#[0-9a-f]{6}$/i.test(value))state.background=value;
     if (!item) return;
     if (selected.type === 'clip' || selected.type === 'audio') {
       const source = asset(item.assetId), max = source.kind === 'image' ? 3600 : source.duration;

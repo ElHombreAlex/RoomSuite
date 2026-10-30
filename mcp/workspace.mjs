@@ -31,7 +31,7 @@ export async function deleteNotesFolder(args,signal){return json('/api/notes/fol
 function object(entry){
   const common={opacity:entry.opacity??1,color:entry.color||'#765ee8',width:entry.width??8};
   if(entry.type==='stroke')return {type:'stroke',points:entry.points,...common,erase:entry.erase??false};
-  return {type:entry.type,x:entry.x,y:entry.y,x2:entry.x2,y2:entry.y2,...common,fill:entry.type==='line'?null:(entry.fill||null)};
+  return {type:entry.type,x:entry.x,y:entry.y,x2:entry.x2,y2:entry.y2,...common,fill:entry.type==='line'?null:(entry.fill||null),...(entry.type==='line'?{}:{stroke:entry.stroke??(!entry.fill||entry.color!==undefined||entry.width!==undefined)})};
 }
 async function sourceImage(sharedPath,state,signal){
   const response=await request(query('/api/workspace/file',{path:sharedPath}),{signal}), declared=Number(response.headers.get('content-length')||0);

@@ -166,7 +166,8 @@ $('normalize').addEventListener('click', () => {
   let peak = 0;
   for (let ch = 0; ch < buffer.numberOfChannels; ch++) for (const sample of buffer.getChannelData(ch)) peak = Math.max(peak, Math.abs(sample));
   if (peak < .000001) return status('This audio is silent, so there is nothing to normalize.', true);
-  $('gain').value = String(Math.round(Math.min(3, .98 / peak) * 100)); $('gain').dispatchEvent(new Event('input')); status('Volume set for a peak near full scale.');
+  const target=clamp(Number($('normalizeTarget').value)||0,-24,0),wanted=Math.pow(10,target/20)/peak,gain=Math.floor(Math.min(3,wanted)*100+1e-9);
+  $('normalizeTarget').value=String(target);$('gain').value=String(gain);$('gain').dispatchEvent(new Event('input'));status(wanted>3?'Volume reached the 300% limit; the target peak may not be reached.':'Volume set for a peak at or below '+target+' dBFS.');
 });
 $('play').addEventListener('click', async () => {
   if (activeSource) { stop(); return; }

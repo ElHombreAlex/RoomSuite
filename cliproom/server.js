@@ -22,7 +22,7 @@ const MAX_MEDIA = 2 * 1024 * 1024 * 1024;
 const MAX_PROJECT = 2 * 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const mediaTypes = new Set(['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-m4v', 'video/mpeg', 'audio/mpeg', 'audio/mp4', 'audio/x-m4a', 'audio/ogg', 'audio/wav', 'audio/wave', 'audio/x-wav', 'audio/webm', 'audio/aac', 'audio/flac', 'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif']);
-const publicFiles = { '/': ['index.html', 'text/html; charset=utf-8'], '/index.html': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/timeline.js': ['timeline.js', 'text/javascript; charset=utf-8'], '/offline-render.js': ['offline-render.js', 'text/javascript; charset=utf-8'], '/styles.css': ['styles.css', 'text/css; charset=utf-8'] };
+const publicFiles = { '/': ['index.html', 'text/html; charset=utf-8'], '/index.html': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/timeline.js': ['timeline.js', 'text/javascript; charset=utf-8'], '/webm-duration.js': ['webm-duration.js', 'text/javascript; charset=utf-8'], '/offline-render.js': ['offline-render.js', 'text/javascript; charset=utf-8'], '/styles.css': ['styles.css', 'text/css; charset=utf-8'] };
 const suiteRoots = { '/suite/': 'suite', '/soundroom/': 'SoundRoom', '/captureroom/': 'CaptureRoom', '/vectorroom/': 'VectorRoom', '/pixelroom/': 'PixelRoom/dist', '/notesroom/':'NotesRoom', '/paintroom/':'PaintRoom', '/files/':'FilesRoom' };
 const suiteTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.onnx': 'application/octet-stream', '.bin': 'application/octet-stream', '.gz': 'application/gzip', '.txt': 'text/plain; charset=utf-8', '.woff': 'font/woff', '.woff2': 'font/woff2' };
 const locks = new Map();
@@ -30,7 +30,7 @@ const locks = new Map();
 function headers(res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
   res.setHeader('Cache-Control', 'no-store');
 }
 function json(res, status, body) {

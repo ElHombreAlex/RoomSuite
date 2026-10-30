@@ -9,7 +9,9 @@
   const length = clip => Math.max(0, clip.out - clip.in) / rate(clip);
   const end = clip => clip.start + length(clip);
   const limit = (n, low, high) => Math.min(high, Math.max(low, n));
-  const active = (clip, time) => time >= clip.start && time < end(clip);
+  // Treat sub-nanosecond arithmetic differences as the same boundary. This
+  // avoids gaps between adjacent frame clips without adding real overlaps.
+  const active = (clip, time) => time + 1e-9 >= clip.start && time + 1e-9 < end(clip);
   const order = (a, b) => a.start - b.start || (a.transitionFrom === b.id ? 1 : b.transitionFrom === a.id ? -1 : 0);
   const sourceAt = (clip, time) => clip.in + limit(time - clip.start, 0, length(clip)) * rate(clip);
   const animatedDefaults = { scale:1, x:50, y:50, opacity:1, rotation:0, brightness:100, contrast:100, saturation:100, volume:1 };
@@ -73,7 +75,7 @@
   }
 
   function empty(id) {
-    return { version: 4, name: 'Untitled story', aspect: '16:9', quality: '720p',
+    return { version: 4, name: 'Untitled story', aspect: '16:9', quality: '720p', background:'#26252e',
       assets: [], videoTracks: [{ id: id(), name: 'Video 1', muted:false, hidden:false }], audioTracks: [{ id: id(), name: 'Audio 1', muted:false }],
       clips: [], audioClips: [], titles: [] };
   }

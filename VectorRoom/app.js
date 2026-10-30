@@ -36,6 +36,7 @@ function createObject(item, defs) {
   if (item.type === 'ellipse') shape = el('ellipse', { cx: item.x + item.width / 2, cy: item.y + item.height / 2, rx: item.width / 2, ry: item.height / 2, ...colors });
   if (item.type === 'line') shape = el('line', { x1: item.x, y1: item.y, x2: item.x2, y2: item.y2, ...colors, fill: 'none' });
   if (item.type === 'path') shape = el('path', { d: pathData(item.points, item.closed), ...colors });
+  if (item.type === 'image') shape = el('image', { x:item.x, y:item.y, width:item.width, height:item.height, href:item.data, preserveAspectRatio:'none' });
   if (item.type === 'text') { shape = el('text', { x: item.x, y: item.y, 'font-size': item.fontSize, 'font-family': item.font, ...colors }); shape.textContent = item.text; }
   if (shape) g.append(shape);
   return g;
@@ -70,18 +71,18 @@ function render() {
   if (!objects.length) { const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = 'Your layers will appear here.'; $('layers').append(empty); }
   [...objects].reverse().forEach((object, reverseIndex) => {
     const row = document.createElement('div'); row.className = 'list-item' + (selected === object.id ? ' active' : '');
-    const icon = document.createElement('span'); icon.className = 'layer-icon'; icon.textContent = ({ rect:'▭', ellipse:'◯', line:'╱', path:'⌁', text:'T' })[object.type];
+    const icon = document.createElement('span'); icon.className = 'layer-icon'; icon.textContent = ({ rect:'▭', ellipse:'◯', line:'╱', path:'⌁', text:'T', image:'▧' })[object.type];
     const button = document.createElement('button'); button.className = 'item-main'; button.textContent = object.type === 'text' ? object.text.slice(0, 28) : object.type.charAt(0).toUpperCase() + object.type.slice(1) + ' ' + (objects.length - reverseIndex);
     button.addEventListener('click', () => { selected = object.id; tool = 'select'; updateTools(); render(); });
     row.append(icon, button); $('layers').append(row);
   });
   if (item) {
     for (const key of ['fillMode','fill','fill2','stroke','strokeWidth']) $(key).value = item[key];
-    $('geometry').classList.toggle('hidden', item.type === 'path');
-    $('sizeFields').classList.toggle('hidden', !['rect','ellipse'].includes(item.type));
+    $('paintSettings').classList.toggle('hidden', item.type === 'image');$('geometry').classList.toggle('hidden', item.type === 'path');
+    $('sizeFields').classList.toggle('hidden', !['rect','ellipse','image'].includes(item.type));
     $('textFields').classList.toggle('hidden', item.type !== 'text');
     if (item.type !== 'path') { $('x').value = Math.round(item.x); $('y').value = Math.round(item.y); }
-    if (['rect','ellipse'].includes(item.type)) { $('width').value = Math.round(item.width); $('height').value = Math.round(item.height); }
+    if (['rect','ellipse','image'].includes(item.type)) { $('width').value = Math.round(item.width); $('height').value = Math.round(item.height); }
     if (item.type === 'text') { $('text').value = item.text; $('fontSize').value = item.fontSize; $('font').value = item.font; }
   }
 }
@@ -208,14 +209,15 @@ function validateDocument(doc) {
   const color = v => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
   const num = v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 100000;
   return doc.objects.map(object => {
-    if (!object || !['rect','ellipse','line','path','text'].includes(object.type) || !['none','solid','gradient'].includes(object.fillMode) || !color(object.fill) || !color(object.fill2) || !color(object.stroke) || !num(object.strokeWidth) || object.strokeWidth < 0 || object.strokeWidth > 100) throw new Error('A project object is invalid.');
+    if (!object || !['rect','ellipse','line','path','text','image'].includes(object.type) || !['none','solid','gradient'].includes(object.fillMode) || !color(object.fill) || !color(object.fill2) || !color(object.stroke) || !num(object.strokeWidth) || object.strokeWidth < 0 || object.strokeWidth > 100) throw new Error('A project object is invalid.');
     const item = { id:uid(), type:object.type, fillMode:object.fillMode, fill:object.fill, fill2:object.fill2, stroke:object.stroke, strokeWidth:object.strokeWidth };
     if (item.type === 'path') {
       if (!Array.isArray(object.points) || object.points.length < 2 || object.points.length > 5000) throw new Error('A path is invalid.');
       item.points = object.points.map(p => { if (!p || !['x','y','inX','inY','outX','outY'].every(key => num(p[key]))) throw new Error('A path point is invalid.'); return { x:p.x,y:p.y,inX:p.inX,inY:p.inY,outX:p.outX,outY:p.outY }; }); item.closed = !!object.closed;
     } else {
       if (!num(object.x) || !num(object.y)) throw new Error('An object position is invalid.'); item.x = object.x; item.y = object.y;
-      if (['rect','ellipse'].includes(item.type)) { if (!num(object.width) || !num(object.height) || object.width <= 0 || object.height <= 0) throw new Error('An object size is invalid.'); item.width = object.width; item.height = object.height; }
+      if (['rect','ellipse','image'].includes(item.type)) { if (!num(object.width) || !num(object.height) || object.width <= 0 || object.height <= 0) throw new Error('An object size is invalid.'); item.width = object.width; item.height = object.height; }
+      if(item.type==='image'){if(typeof object.data!=='string'||object.data.length>28*1024*1024||!/^data:image\/(png|jpeg|webp|gif|avif);base64,[a-z0-9+/=]+$/i.test(object.data))throw new Error('An embedded image is invalid.');item.data=object.data;}
       if (item.type === 'line') { if (!num(object.x2) || !num(object.y2)) throw new Error('A line is invalid.'); item.x2 = object.x2; item.y2 = object.y2; }
       if (item.type === 'text') { if (typeof object.text !== 'string' || object.text.length > 500 || !num(object.fontSize) || object.fontSize < 8 || object.fontSize > 400 || !['sans-serif','serif','monospace'].includes(object.font)) throw new Error('Text is invalid.'); item.text = object.text; item.fontSize = object.fontSize; item.font = object.font; }
     }
@@ -224,14 +226,19 @@ function validateDocument(doc) {
 }
 async function openProjectFile(file) {
   if (!file) return;
-  try { if (file.size > 8 * 1024 * 1024) throw new Error('Project file is too large.'); const next = validateDocument(JSON.parse(await file.text())); change(() => { objects = next; selected = null; draft = null; }); status('Project opened.'); }
+  try { if (file.size > 32 * 1024 * 1024) throw new Error('Project file is too large.'); const next = validateDocument(JSON.parse(await file.text())); change(() => { objects = next; selected = null; draft = null; }); status('Project opened.'); }
   catch (error) { status('Could not open project: ' + error.message, true); }
 }
-$('openProject').addEventListener('change', async event => { const file=event.target.files[0];event.target.value='';await openProjectFile(file); });
-$('openSharedVector').addEventListener('click',async()=>{try{const file=await RoomShared.choose(['.vectorroom']);if(file)await openProjectFile(file);}catch(e){status(e.message,true);}});
+async function openVectorFile(file){if(!file)return;if(!file.type.startsWith('image/'))return openProjectFile(file);try{
+  if(file.size>20*1024*1024)throw new Error('Images must be 20 MB or smaller.');const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('Could not read the image.'));reader.readAsDataURL(file);});
+  if(!/^data:image\/(png|jpeg|webp|gif|avif);base64,/i.test(data))throw new Error('Choose a PNG, JPEG, WebP, GIF or AVIF image.');const image=new Image();image.src=data;await image.decode();const scale=Math.min(1000/image.naturalWidth,700/image.naturalHeight),width=image.naturalWidth*scale,height=image.naturalHeight*scale;
+  change(()=>{const item={...style('image'),x:(1000-width)/2,y:(700-height)/2,width,height,data};objects.push(item);selected=item.id;});status('Image added as a flattened layer.');
+  }catch(error){status('Could not open image: '+error.message,true);}}
+$('openProject').addEventListener('change', async event => { const file=event.target.files[0];event.target.value='';await openVectorFile(file); });
+$('openSharedVector').addEventListener('click',async()=>{try{const file=await RoomShared.choose(['.vectorroom','image/*']);if(file)await openVectorFile(file);}catch(e){status(e.message,true);}});
 $('saveSharedVector').addEventListener('click',async()=>{try{const path=await RoomShared.save(await pngBlob(),'vectorroom-artwork.png');if(path)status('Saved to shared files: '+path);}catch(e){status(e.message,true);}});
 $('saveSharedVectorProject').addEventListener('click',async()=>{try{const path=await RoomShared.save(new Blob([JSON.stringify({format:'vectorroom',version:1,objects})],{type:'application/json'}),'artwork.vectorroom');if(path)status('Saved to shared files: '+path);}catch(e){status(e.message,true);}});
-(async()=>{try{const file=await RoomShared.fromQuery();if(file)await openProjectFile(file);}catch(e){status(e.message,true);}})();
+(async()=>{try{const file=await RoomShared.fromQuery();if(file)await openVectorFile(file);}catch(e){status(e.message,true);}})();
 document.addEventListener('keydown', event => {
   if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); $('undo').click(); }

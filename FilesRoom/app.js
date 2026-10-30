@@ -4,7 +4,7 @@ const formatSize=n=>n>=1024*1024*1024?(n/1024/1024/1024).toFixed(1)+' GB':n>=102
 function message(text,error=false){$('status').textContent=text;$('status').classList.toggle('error',error);}
 async function action(url,data){return (await RoomShared.request(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})).json();}
 function choices(name){const ext=name.split('.').pop().toLowerCase(), out=[];
-  if(['png','jpg','jpeg','webp','gif','avif'].includes(ext))out.push(['PaintRoom','/paintroom/'],['PixelRoom','/pixelroom/'],['CaptureRoom','/captureroom/'],['Cliproom','/cliproom/']);
+  if(['png','jpg','jpeg','webp','gif','avif'].includes(ext))out.push(['PaintRoom','/paintroom/'],['PixelRoom','/pixelroom/'],['VectorRoom','/vectorroom/'],['CaptureRoom','/captureroom/'],['Cliproom','/cliproom/']);
   if(['paintroom'].includes(ext))out.push(['PaintRoom','/paintroom/']);if(['pixelroom'].includes(ext))out.push(['PixelRoom','/pixelroom/']);if(['vectorroom'].includes(ext))out.push(['VectorRoom','/vectorroom/']);
   if(['mp3','wav','m4a','ogg','flac'].includes(ext))out.push(['SoundRoom','/soundroom/'],['Cliproom','/cliproom/']);
   if(['mp4','webm','mov','m4v'].includes(ext))out.push(['Cliproom','/cliproom/']);if(['md','txt'].includes(ext))out.push(['NotesRoom','/notesroom/']);return out;}

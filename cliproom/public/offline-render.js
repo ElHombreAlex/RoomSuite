@@ -86,7 +86,11 @@ export async function renderOffline({ project, timeline, canvas, prepareImages, 
   ]);
   await output.finalize();
   if (!output.target.buffer?.byteLength) throw new Error('Offline rendering produced an empty video.');
-  const url = URL.createObjectURL(new Blob([output.target.buffer], { type:'video/webm' })), link = document.createElement('a');
+  // Opus packet padding can make the muxed duration exceed the timeline by
+  // one packet. Keep the container duration tied to the editable timeline.
+  let blob = new Blob([output.target.buffer], { type:'video/webm' });
+  try { blob = await RoomWebM.withDuration(blob, duration); } catch { /* Keep the browser's valid muxed file if its metadata cannot safely be changed. */ }
+  const url = URL.createObjectURL(blob), link = document.createElement('a');
   link.href = url; link.download = 'cliproom.webm'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 60000);
   } finally { for (const { input } of inputs.values()) input.dispose(); }
 }

@@ -8,7 +8,8 @@ const coord=z.number().finite().min(-100000).max(100000), color=z.string().regex
 const style={color:color.optional(),width:z.number().min(.5).max(300).optional(),opacity:z.number().min(0).max(1).optional()};
 const element=z.discriminatedUnion('type',[
   z.object({type:z.literal('stroke'),points:z.array(z.object({x:coord,y:coord})).min(1).max(50000),erase:z.boolean().optional(),...style}),
-  ...['rect','ellipse','line'].map(type=>z.object({type:z.literal(type),x:coord,y:coord,x2:coord,y2:coord,fill:color.optional(),...style}))
+  ...['rect','ellipse'].map(type=>z.object({type:z.literal(type),x:coord,y:coord,x2:coord,y2:coord,fill:color.optional(),stroke:z.boolean().optional().describe('Draw an outline. Filled shapes default to no outline unless color or width is specified.'),...style})),
+  z.object({type:z.literal('line'),x:coord,y:coord,x2:coord,y2:coord,...style})
 ]);
 const notes=z.object({note:record,url:z.string()});
 export function registerWorkspace(server,{handler,file,artifact}){

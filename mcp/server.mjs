@@ -10,6 +10,7 @@ const file = z.string().min(1).max(4096).describe('Path relative to the MCP work
 const color = z.string().regex(/^#[0-9a-f]{6}$/i).describe('Six-digit hex color, such as #ffffff.');
 const coord = z.number().finite().min(-100000).max(100000);
 const seconds = z.number().finite().min(0).max(86400);
+const captureBox=z.object({x:z.number().min(-3000).max(3000),y:z.number().min(-3000).max(3000),width:z.number().min(1).max(3000),height:z.number().min(1).max(3000)});
 const shapeStyle = {
   fill_mode:z.enum(['solid','gradient','none']).optional(), fill:color.optional(), fill2:color.optional(),
   stroke:color.optional(), stroke_width:z.number().min(0).max(100).optional()
@@ -125,11 +126,11 @@ function buildServer() {
   }, handler(editImage));
   server.registerTool('soundroom_edit', {
     title:'Edit audio with SoundRoom',
-    description:'Open audio, optionally trim, normalize, adjust gain or fades, and export a WAV. If gain_percent and normalize are both supplied, gain_percent replaces the normalized gain.',
+    description:'Open audio, optionally trim, normalize to a peak with headroom, adjust gain or fades, and export a WAV. Default normalization target is -3 dBFS. If gain_percent is supplied, it replaces the normalized gain.',
     inputSchema:z.object({
       input:file, output:file.describe('New output path ending in .wav.'),
       trim:z.object({ start:seconds, end:seconds }).optional(),
-      normalize:z.boolean().optional(), gain_percent:z.number().min(0).max(300).optional(), fade_in:z.number().min(0).max(600).optional(), fade_out:z.number().min(0).max(600).optional()
+      normalize:z.boolean().optional(), normalize_peak_dbfs:z.number().min(-24).max(0).optional().describe('Normalize to this peak dBFS; specifying it enables normalization.'), gain_percent:z.number().min(0).max(300).optional(), fade_in:z.number().min(0).max(600).optional(), fade_out:z.number().min(0).max(600).optional()
     }), outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(editAudio));
   server.registerTool('vectorroom_create', {
@@ -140,10 +141,10 @@ function buildServer() {
   }, handler(createVector));
   server.registerTool('captureroom_record_scene', {
     title:'Record a prepared CaptureRoom scene',
-    description:'Record a static scene containing an image and/or text. This tool does not capture a screen, camera or microphone; those sources require an interactive user. The output extension is chosen by the browser.',
+    description:'Record a static scene containing an image and/or wrapped text. Images fit the frame by default; choose contain, cover, or explicit placement. This tool does not capture a screen, camera or microphone. The output extension is chosen by the browser.',
     inputSchema:z.object({
       output:file.describe('New output filename stem, or a filename with the browser-supported video extension.'), duration:z.number().min(1).max(3600),
-      image:file.optional(), text:z.string().min(1).max(500).optional(), font_size:z.number().min(8).max(300).optional(), color:color.optional()
+      image:file.optional(), image_fit:z.enum(['contain','cover']).optional(), image_box:captureBox.optional(), text:z.string().min(1).max(500).optional(), font_size:z.number().min(8).max(300).optional(), color:color.optional(), text_box:captureBox.optional(), text_backdrop:z.boolean().optional(), text_fit:z.boolean().optional().describe('Shrink text to fit its box when necessary; default true.')
     }), outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(recordScene));
   server.registerTool('cliproom_render', {
@@ -151,8 +152,9 @@ function buildServer() {
     description:'Import media, assemble tracks, positioning, keyframes and titles, then render via the Cliproom server endpoint. Use timeline_time for keyframes at absolute timeline positions. Uploaded media remains in the server library. Optionally save an editable project.',
     inputSchema:z.object({
       output:file.describe('New output filename stem, or a filename with the browser-supported video extension.'),
-      name:z.string().min(1).max(160).optional(), aspect:z.enum(['16:9','9:16','1:1']).optional(), quality:z.enum(['720p','1080p']).optional(),
-      media:z.array(media).min(1).max(1000),
+      name:z.string().min(1).max(160).optional(), aspect:z.enum(['16:9','9:16','1:1']).optional(), quality:z.enum(['720p','1080p']).optional(), background:color.optional().describe('Canvas background, including the color revealed by fades. Defaults to #26252e.'),
+      media:z.array(media).max(1000).optional(),
+      frame_sequence:z.object({frames:z.array(file).min(1).max(1000),fps:z.number().int().min(1).max(60),duration:z.number().min(.001).max(600),start:seconds.optional(),track:z.number().int().min(1).max(100).optional(),fit:z.enum(['contain','cover']).optional(),scale:animation.scale,x:animation.x,y:animation.y}).optional().describe('Cycle still-image frames at fps for exactly duration seconds; each distinct file is uploaded once.'),
       titles:z.array(z.object({ text:z.string().min(1).max(240), start:seconds, end:seconds, x:z.number().min(0).max(100).optional(), y:z.number().min(0).max(100).optional(), size:z.number().min(2).max(30).optional(), color:color.optional() })).max(100).optional(),
       render_mode:z.enum(['realtime','offline']).optional().describe('Offline exports WebM without waiting for playback; requires normal-speed video/audio, supported codecs, and a project up to 10 minutes. Defaults to realtime.'),
       save_project:z.boolean().optional()

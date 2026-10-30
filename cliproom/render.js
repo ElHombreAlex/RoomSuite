@@ -15,6 +15,7 @@ async function validateProject(input, assetsDirectory) {
   try { project = timeline.migrate(input, () => crypto.randomUUID()); }
   catch (error) { throw invalid(error.message); }
   if (typeof project.name !== 'string' || project.name.length > 160 || !['16:9','9:16','1:1'].includes(project.aspect) || !['720p','1080p'].includes(project.quality)) throw invalid('Invalid project settings.');
+  if (project.background !== undefined && (typeof project.background !== 'string' || !/^#[0-9a-f]{6}$/i.test(project.background))) throw invalid('Invalid canvas background color.');
   if (project.assets.length > 1000 || project.clips.length + project.audioClips.length > 10000) throw invalid('Project contains too many media items.');
   const assets = new Map();
   for (const asset of project.assets) {

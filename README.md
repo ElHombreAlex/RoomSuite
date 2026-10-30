@@ -64,6 +64,8 @@ Create notes and nested folders, add comma-separated tags, and search by title, 
 
 Draw with a brush or eraser, make lines, rectangles and ellipses, and move, reorder, hide or transform layers. Import a supported raster image as a layer. **Save** stores an editable project on the server; **Open** reopens or deletes it, and **Save a copy** resolves a concurrent edit. Export PNG or an editable `.paintroom` file to the device or shared files. SVG export is available for vector-only work without embedded images or eraser strokes. Use **Send to Cliproom** or export a PNG through shared files to animate it there. Projects embed imported images, which are limited to 20 MiB each; editable projects are limited to 32 MiB.
 
+**Send to VectorRoom** saves a file through the shared-file picker and provides a link to open it. Fully opaque, unclipped vector artwork is converted into editable VectorRoom paths, scaled to fit its 1000 × 700 artboard. Hidden layers are omitted and layer grouping is flattened. Artwork containing photos, eraser strokes, transparency, clipping or other unsupported vector features is sent as a flattened PNG layer instead; the original remains editable in PaintRoom. VectorRoom can move and resize that image and add vector objects above it, but cannot recover the original PaintRoom layers from the PNG. The shared copy remains on the server until deleted.
+
 ## Storage and backups
 
 `ROOMSUITE_MAX_FILE_BYTES` defaults to 536870912 (512 MiB per shared upload), and `ROOMSUITE_MAX_STORAGE_BYTES` defaults to 5368709120 (5 GiB total for shared files, notes and PaintRoom projects). Both accept positive integer byte counts. Cliproom's existing media library is separate and is not counted in this quota. File names and paths are validated, uploads cannot overwrite existing files, and downloads are served as attachments. Notes and PaintRoom projects use revision checks to prevent silent overwrites. Limits assume one RoomSuite server process owns the data directory; avoid modifying it directly while the service is running.
@@ -83,13 +85,13 @@ The script creates private timestamped tar archives and checks that they can be 
 
 ## SoundRoom
 
-Choose an audio file or record your microphone. Drag across the waveform or enter start and end times to select a range; trim to it or cut it out. Click to move the playhead, then add a split marker. **Export current part** exports the selection, or the section containing the playhead between split markers. Volume and fades apply to playback and WAV exports; normalize sets volume based on the audio's peak.
+Choose an audio file or record your microphone. Drag across the waveform or enter start and end times to select a range; trim to it or cut it out. Click to move the playhead, then add a split marker. **Export current part** exports the selection, or the section containing the playhead between split markers. Volume and fades apply to playback and WAV exports. Normalize targets a peak of −3 dBFS by default; adjust the target from −24 to 0 dBFS when needed. Gain is limited to 300% and rounded down to the nearest whole percent, so very quiet audio may not reach the target.
 
 Audio and edit history stay in the tab's memory. Export a WAV before closing it; split markers and editable history are not saved in the WAV. Supported imports depend on browser decoders, and large recordings depend on available memory.
 
 ## CaptureRoom
 
-Add a scene, then add visual sources and microphones. Drag a visual source in the preview or use its position and size controls. Switch scenes during a recording; only the active scene's visible sources and audible sources appear in the output. Sources in other scenes remain open until removed or the tab closes.
+Add a scene, then add visual sources and microphones. Images initially fit inside the frame while preserving their aspect ratio. Use **Fit frame** to letterbox or **Fill frame** to crop, or adjust position and size yourself. Text wraps to its source width and is clipped to its height; a contrast backdrop can improve readability. Drag a visual source in the preview or use its position and size controls. Switch scenes during a recording; only the active scene's visible sources and audible sources appear in the output. Sources in other scenes remain open until removed or the tab closes.
 
 Start and stop recording, then download the selected result or send it to Cliproom. Recordings are kept in the tab's memory, so download anything you want to keep before closing it. The preview is 1280 × 720 and recording targets 30 fps; actual performance and output format depend on the browser and device. CaptureRoom currently records locally and does **not** provide live streaming.
 
@@ -99,7 +101,7 @@ The browser asks for permission for each screen-sharing session. Screen or syste
 
 Draw rectangles, ellipses, lines and text. With the pen, click to add points and drag to create Bézier handles; finish or close the path, then use **Edit nodes** to adjust points and handles. The inspector controls fills, gradients, outlines and text. Toggle grid snapping when helpful.
 
-**Save project** downloads a .vectorroom file that can be reopened in VectorRoom. Export SVG for scalable artwork, or PNG for a raster image. SVG/PNG exports are not editable VectorRoom project files. Work stays in the tab until you save or export.
+**Save project** downloads a .vectorroom file that can be reopened in VectorRoom. Export SVG for scalable artwork, or PNG for a raster image. SVG/PNG exports are not editable VectorRoom project files. VectorRoom can also import a raster image as a movable, resizable layer; imported images remain raster and are embedded in project and SVG files. Images are limited to 20 MiB and project imports to 32 MiB. Work stays in the tab until you save or export.
 
 ## Checks
 

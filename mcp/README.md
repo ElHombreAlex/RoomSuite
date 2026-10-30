@@ -104,6 +104,12 @@ The MCP workspace restriction is separate from your agent host's own filesystem 
 
 CaptureRoom's MCP tool does **not** capture a live screen, camera or microphone. Those require a person to grant permission in a browser on the device being captured. The MCP integration does not provide live streaming. Browser codecs, model availability, and device performance still limit exports. Subject removal is approximate and the resulting image should be reviewed.
 
+For PaintRoom `rect` and `ellipse` elements, a filled shape has no outline unless `color` or `width` is supplied, or `stroke: true` is requested. Use `stroke: false` to suppress an outline explicitly. Unfilled shapes and lines retain their default outlines. VectorRoom's filled rectangles and ellipses also default to no outline; specify `stroke` or `stroke_width` when one is wanted. Existing saved projects keep their stored outlines.
+
+`soundroom_edit` normalizes to −3 dBFS by default. Supply `normalize_peak_dbfs` between −24 and 0 to choose a target and enable normalization. The 300% gain ceiling and whole-percent gain steps can leave the measured peak below the requested target; `gain_percent`, if supplied, overrides normalization.
+
+`captureroom_record_scene` fits an image to the 1280 × 720 frame by default. Set `image_fit` to `contain` or `cover`, or specify `image_box` with `x`, `y`, `width`, and `height`. Text wraps inside `text_box`; absent an explicit box, it uses the visible image area or a safe frame margin. The default contrast backdrop can be disabled with `text_backdrop: false`, and `text_fit: false` preserves the supplied font size even if text is clipped. CaptureRoom writes duration metadata to supported streaming WebM recordings. Cliproom also attempts to read older recordings that lack that metadata.
+
 For example, an agent can call vectorroom_create with:
 
 ~~~json
@@ -159,6 +165,27 @@ Use **`timeline_time`** for an absolute time on the project timeline; it must fa
 Each property interpolates linearly between frames that set it. If its first frame is after source time zero, the clip's base value acts as an implicit point at zero; after its last frame the value stays constant. This keeps the animation attached to the source through moves, trims, splits and speed changes. Fades multiply animated opacity and volume.
 
 The saved project returned by `save_project` can be opened and edited in Cliproom. The inspector shows keyframe controls and timeline markers; existing projects load normally and are upgraded to version 4 when saved. An older Cliproom version cannot reopen the upgraded file, so retain a backup if needed.
+
+## Loop still frames
+
+`cliproom_render` can assemble a repeating frame sequence without duplicating uploads. For example:
+
+~~~json
+{
+  "output": "horse-loop",
+  "name": "Horse cycle",
+  "save_project": true,
+  "render_mode": "offline",
+  "background": "#000000",
+  "frame_sequence": {
+    "frames": ["horse-1.png", "horse-2.png", "horse-3.png", "horse-4.png", "horse-5.png", "horse-6.png"],
+    "fps": 12,
+    "duration": 10
+  }
+}
+~~~
+
+The sequence cycles through the images, creates 120 editable clips for 10 seconds, and imports each distinct input file once. Adjacent clips do not need artificial overlaps. `frame_sequence` also accepts `start`, `track`, `fit`, `scale`, `x` and `y`; add a `media` array for other tracks, such as sound. Repeated paths in `media` also reuse one import within the same call. Imports remain in Cliproom's server library after rendering. The 10,000-clip project limit applies to the combined timeline. Old projects retain Cliproom's original `#26252e` background; choose `background` or use the project inspector to control the color revealed by fades.
 
 ## Work with existing projects
 

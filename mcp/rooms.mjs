@@ -88,10 +88,11 @@ export async function inspectMedia(args, signal) {
           if (kind === 'image') media.onload = loaded; else { media.preload = 'metadata'; media.onloadedmetadata = loaded; }
           media.src = url;
         });
+        const duration=kind==='image'?null:await readableDuration(media).catch(()=>null);
         return { name:file.name, bytes:file.size, mime_type:type, kind,
           width:kind === 'image' ? media.naturalWidth : kind === 'video' ? media.videoWidth : null,
           height:kind === 'image' ? media.naturalHeight : kind === 'video' ? media.videoHeight : null,
-          duration_seconds:kind !== 'image' && Number.isFinite(media.duration) ? media.duration : null };
+          duration_seconds:duration };
       } finally { URL.revokeObjectURL(url); }
     });
   });
@@ -123,8 +124,8 @@ async function uploadCliproomMedia(page, file) {
           if (kind === 'image') media.onload = loaded; else { media.preload = 'metadata'; media.onloadedmetadata = loaded; }
           media.onerror = failed; media.src = url;
         });
-        if (kind !== 'image' && (!Number.isFinite(media.duration) || media.duration <= 0)) throw new Error('The file has no readable duration.');
-        info = { duration:kind === 'image' ? 5 : media.duration, width:kind === 'image' ? media.naturalWidth : media.videoWidth || 0, height:kind === 'image' ? media.naturalHeight : media.videoHeight || 0 };
+        const duration=kind==='image'?5:await readableDuration(media);
+        info = { duration, width:kind === 'image' ? media.naturalWidth : media.videoWidth || 0, height:kind === 'image' ? media.naturalHeight : media.videoHeight || 0 };
       } finally { URL.revokeObjectURL(url); }
       const response = await fetch('/api/assets', { method:'POST', headers:{ 'Content-Type':'application/octet-stream', 'X-Cliproom-Request':'1', 'X-File-Type':type, 'X-File-Name':encodeURIComponent(file.name) }, body:file });
       const data = await response.json().catch(() => ({}));
@@ -191,7 +192,8 @@ export async function editAudio(args, signal) {
       if (await page.locator('#trim').isDisabled()) throw new Error('The trim range is too short.');
       await page.locator('#trim').click();
     }
-    if (args.normalize) {
+    if (args.normalize || args.normalize_peak_dbfs !== undefined) {
+      if(args.normalize_peak_dbfs!==undefined)await setField(page,'#normalizeTarget',args.normalize_peak_dbfs);
       await page.locator('#normalize').click();
       if (await page.locator('#status').evaluate(el => el.classList.contains('error'))) throw new Error(await page.locator('#status').textContent());
     }
@@ -205,7 +207,9 @@ export async function editAudio(args, signal) {
 }
 
 function vectorObject(element) {
-  const item = { type:element.type, fillMode:element.fill_mode || (element.type === 'line' || element.type === 'path' ? 'none' : 'solid'), fill:element.fill || '#a895e9', fill2:element.fill2 || '#f7bcb5', stroke:element.stroke || '#302a3e', strokeWidth:element.stroke_width ?? (element.type === 'text' ? 0 : 2) };
+  const fillMode = element.fill_mode || (element.type === 'line' || element.type === 'path' ? 'none' : 'solid');
+  const defaultWidth = element.type === 'text' || (['rect','ellipse'].includes(element.type) && fillMode !== 'none' && !element.stroke) ? 0 : 2;
+  const item = { type:element.type, fillMode, fill:element.fill || '#a895e9', fill2:element.fill2 || '#f7bcb5', stroke:element.stroke || '#302a3e', strokeWidth:element.stroke_width ?? defaultWidth };
   if (element.type === 'path') {
     item.points = element.points.map(p => ({ x:p.x, y:p.y, inX:p.in_x ?? p.x, inY:p.in_y ?? p.y, outX:p.out_x ?? p.x, outY:p.out_y ?? p.y })); item.closed = !!element.closed;
   } else {
@@ -233,14 +237,21 @@ export async function recordScene(args, signal, progress) {
   if (!args.image && !args.text) throw new Error('Provide an image or text for the scene.');
   const image = args.image ? await inputPath(args.image) : null;
   return withRoom('/captureroom/', 'CaptureRoom', signal, async page => {
+    let bounds={x:80,y:80,width:1120,height:560};
     if (image) {
       await page.locator('#imageFile').setInputFiles(image);
       await page.waitForFunction(() => [...document.querySelectorAll('#sources .item-main')].some(item => item.textContent), null, { timeout:30000 });
+      if(args.image_fit==='cover')await page.locator('#fillFrame').click();
+      if(args.image_box)for(const [key,value] of Object.entries(args.image_box))await setField(page,'#'+key,value);
+      bounds=await page.evaluate(()=>{const item=source(),left=Math.max(0,item.x),top=Math.max(0,item.y),right=Math.min(output.width,item.x+item.width),bottom=Math.min(output.height,item.y+item.height),width=Math.max(1,right-left),height=Math.max(1,bottom-top),pad=Math.min(48,width*.05,height*.05);return {x:left+pad,y:top+pad,width:Math.max(1,width-2*pad),height:Math.max(1,height-2*pad)};});
     }
     if (args.text) {
       await page.locator('#addText').click(); await setField(page, '#text', args.text);
+      for(const [key,value] of Object.entries(args.text_box||bounds))await setField(page,'#'+key,value);
       if (args.font_size !== undefined) await setField(page, '#fontSize', args.font_size);
       if (args.color) await setField(page, '#color', args.color);
+      await page.locator('#textBackdrop').setChecked(args.text_backdrop!==false);
+      if(args.text_fit!==false){const fits=await page.evaluate(()=>{const item=source();while(item.fontSize>8){outputCtx.font='700 '+item.fontSize+'px system-ui, sans-serif';if(wrapText(outputCtx,item.text,item.width).length*item.fontSize*1.2<=item.height)break;item.fontSize=Math.max(8,item.fontSize-1);}outputCtx.font='700 '+item.fontSize+'px system-ui, sans-serif';renderUi();return wrapText(outputCtx,item.text,item.width).length*item.fontSize*1.2<=item.height;});if(!fits)throw new Error('Text does not fit inside the text box. Use a larger box or less text.');}
     }
     const ext = await page.evaluate(() => {
       const choices = ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm','video/mp4'];
@@ -269,24 +280,29 @@ export async function recordScene(args, signal, progress) {
 
 export async function renderVideo(args, signal, progress) {
   await preflightVideoOutput(args.output, args.render_mode);
-  for (const entry of args.media) for (const frame of entry.keyframes || []) {
+  const entries=[...(args.media||[])],sequence=args.frame_sequence;
+  if(!entries.length&&!sequence)throw new Error('Provide media or a frame_sequence.');
+  if(sequence){const count=Math.ceil(sequence.duration*sequence.fps-1e-9),start=sequence.start||0;if(count+entries.length>10000)throw new Error('Frame sequence exceeds the 10,000-clip project limit.');
+    for(let i=0;i<count;i++){const at=start+i/sequence.fps,end=Math.min(start+sequence.duration,start+(i+1)/sequence.fps);entries.push({input:sequence.frames[i%sequence.frames.length],start:at,duration:end-at,track:sequence.track,fit:sequence.fit,scale:sequence.scale,x:sequence.x,y:sequence.y,_frame:true});}}
+  for (const entry of entries) for (const frame of entry.keyframes || []) {
     if (['time','source_time','timeline_time'].filter(key => frame[key] !== undefined).length !== 1) throw new Error('Each keyframe must specify exactly one of timeline_time, source_time, or time.');
     if (!Object.keys(frame).some(key => !['time','source_time','timeline_time'].includes(key))) throw new Error('A keyframe must set at least one property.');
   }
-  const files = await Promise.all(args.media.map(entry => inputPath(entry.input)));
+  const requested=[...new Set(entries.map(entry=>entry.input))],resolved=await Promise.all(requested.map(inputPath)),fileFor=new Map(requested.map((name,i)=>[name,resolved[i]])),files=[...new Set(resolved)];
   const imported = await withRoom('/cliproom/', 'Cliproom', signal, async page => {
     const imported = [];
     for (let i = 0; i < files.length; i++) {
       try { imported.push(await uploadCliproomMedia(page, files[i])); }
-      catch (error) { throw new Error('Could not import ' + args.media[i].input + ': ' + error.message); }
+      catch (error) { throw new Error('Could not import ' + files[i] + ': ' + error.message); }
     }
     return imported;
   });
-  const uid = () => crypto.randomUUID(), state = T.empty(uid), cursors = new Map();
+  const uid = () => crypto.randomUUID(), state = T.empty(uid), cursors = new Map(), assetFor=new Map(files.map((file,i)=>[file,imported[i]]));
   state.assets = imported;
-  state.name = args.name || 'RoomSuite agent video'; state.aspect = args.aspect || '16:9'; state.quality = args.quality || '720p';
-  args.media.forEach((entry, i) => {
-    const asset = state.assets[i], isAudio = asset.kind === 'audio';
+  state.name = args.name || 'RoomSuite agent video'; state.aspect = args.aspect || '16:9'; state.quality = args.quality || '720p';if(args.background)state.background=args.background;
+  entries.forEach(entry => {
+    const asset = assetFor.get(fileFor.get(entry.input)), isAudio = asset.kind === 'audio';
+    if(entry._frame&&asset.kind!=='image')throw new Error('Frame sequences require still-image files: '+entry.input);
     const clips = isAudio ? state.audioClips : state.clips;
     const item = isAudio ? { id:uid(), assetId:asset.id, rate:1, volume:.7, fadeIn:0, fadeOut:0 } :
       { id:uid(), assetId:asset.id, rate:1, volume:1, fit:'contain', opacity:1, scale:1, x:50, y:50, brightness:100, contrast:100, saturation:100, rotation:0, flipX:false, fadeIn:0, fadeOut:0 };
@@ -338,7 +354,7 @@ export async function renderVideo(args, signal, progress) {
   const body = project ? { project_id:project.id } : { project:assembled.state };
   if (args.render_mode) body.render_mode = args.render_mode;
   const result = await renderProjectRequest(body, args.output, signal);
-  const warnings = args.media.some(entry => entry.keyframes?.some(frame => frame.time !== undefined)) ?
+  const warnings = entries.some(entry => entry.keyframes?.some(frame => frame.time !== undefined)) ?
     ['Legacy keyframe time means source-media seconds, not timeline seconds. Prefer timeline_time or source_time.'] : [];
   return { ...result, operation:'render_video', duration_seconds:assembled.duration, project, warnings, note:'Imported media remains in the Cliproom server library.' };
 }

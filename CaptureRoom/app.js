@@ -60,15 +60,22 @@ function renderUi() {
   if (item) {
     $('sourceName').value = item.name; $('visible').checked = item.visible;
     $('visualSettings').classList.toggle('hidden', item.type === 'mic'); $('textSettings').classList.toggle('hidden', item.type !== 'text');
+    $('fitSettings').classList.toggle('hidden', !['image','screen','camera'].includes(item.type));
     $('audioSettings').classList.toggle('hidden', !item.gainNode);
     if (item.type !== 'mic') for (const key of ['x','y','width','height']) $(key).value = Math.round(item[key]);
-    if (item.type === 'text') { $('text').value = item.text; $('fontSize').value = item.fontSize; $('color').value = item.color; }
+    if (item.type === 'text') { $('text').value = item.text; $('fontSize').value = item.fontSize; $('color').value = item.color; $('textBackdrop').checked=!!item.textBackdrop; }
     if (item.gainNode) { $('volume').value = Math.round(item.volume * 100); $('volumeValue').textContent = $('volume').value + '%'; }
   }
 }
 function createSource(type, name) {
   const isCamera = type === 'camera', isText = type === 'text';
-  return { id:uid(), type, name, visible:true, x:isCamera ? 910 : isText ? 80 : 0, y:isCamera ? 500 : isText ? 80 : 0, width:isCamera ? 300 : isText ? 800 : 1280, height:isCamera ? 169 : isText ? 160 : 720, volume:1, text:'Your story starts here', fontSize:60, color:'#ffffff', ended:false };
+  return { id:uid(), type, name, visible:true, x:isCamera ? 910 : isText ? 80 : 0, y:isCamera ? 500 : isText ? 80 : 0, width:isCamera ? 300 : isText ? 800 : 1280, height:isCamera ? 169 : isText ? 160 : 720, volume:1, text:'Your story starts here', fontSize:60, color:'#ffffff', textBackdrop:false, ended:false };
+}
+function fitSource(item,mode='contain'){
+  const w=item?.image?.naturalWidth||item?.video?.videoWidth,h=item?.image?.naturalHeight||item?.video?.videoHeight;
+  if(!w||!h)throw new Error('The source dimensions are not available yet.');
+  const scale=mode==='cover'?Math.max(output.width/w,output.height/h):Math.min(output.width/w,output.height/h);
+  item.width=w*scale;item.height=h*scale;item.x=(output.width-item.width)/2;item.y=(output.height-item.height)/2;renderUi();
 }
 async function addStream(type) {
   const target = scene();
@@ -106,7 +113,7 @@ function addImageFile(file) {
   const target = scene(), url = URL.createObjectURL(file), image = new Image();
   image.onload = () => {
     if (!scenes.includes(target)) { URL.revokeObjectURL(url); return; }
-    const item = createSource('image', file.name.slice(0,60)); item.image = image; item.url = url; item.width = Math.min(640, image.naturalWidth); item.height = item.width * image.naturalHeight / image.naturalWidth;
+    const item = createSource('image', file.name.slice(0,60)); item.image = image; item.url = url; fitSource(item);
     target.sources.push(item); if (target.id === activeScene) selected = item.id; renderUi(); status('Image added.');
   };
   image.onerror = () => { URL.revokeObjectURL(url); status('This image could not be opened.', true); }; image.src = url;
@@ -129,7 +136,16 @@ for (const key of ['x','y','width','height','fontSize']) $(key).addEventListener
   item[key] = key === 'width' || key === 'height' ? clamp(value, 1, 3000) : key === 'fontSize' ? clamp(value, 8, 300) : clamp(value, -3000, 3000); renderUi();
 });
 for (const key of ['text','color']) $(key).addEventListener('change', () => { if (source()) { source()[key] = $(key).value.slice(0,500); renderUi(); } });
+$('textBackdrop').addEventListener('change',()=>{if(source()?.type==='text')source().textBackdrop=$('textBackdrop').checked;});
+for(const [id,mode] of [['fitFrame','contain'],['fillFrame','cover']])$(id).addEventListener('click',()=>{try{fitSource(source(),mode);status(mode==='contain'?'Source fitted to frame.':'Source fills the frame.');}catch(error){status(error.message,true);}});
 $('volume').addEventListener('input', () => { if (source()) { source().volume = Number($('volume').value) / 100; $('volumeValue').textContent = $('volume').value + '%'; syncAudio(); } });
+function wrapText(ctx,text,width){
+  const lines=[];for(const paragraph of text.split('\n')){let line='';
+    for(const word of paragraph.split(/\s+/).filter(Boolean)){const joined=line?line+' '+word:word;if(ctx.measureText(joined).width<=width){line=joined;continue;}
+      if(line){lines.push(line);line='';}for(const char of word){if(line&&ctx.measureText(line+char).width>width){lines.push(line);line='';}line+=char;}}
+    lines.push(line);
+  }return lines;
+}
 function drawFrame() {
   outputCtx.fillStyle = '#242032'; outputCtx.fillRect(0,0,output.width,output.height);
   const current = scene();
@@ -139,8 +155,11 @@ function drawFrame() {
       if ((item.type === 'screen' || item.type === 'camera') && item.video.readyState >= 2) outputCtx.drawImage(item.video, item.x, item.y, item.width, item.height);
       else if (item.type === 'image' && item.image.complete) outputCtx.drawImage(item.image, item.x, item.y, item.width, item.height);
       else if (item.type === 'text') {
-        outputCtx.fillStyle = item.color; outputCtx.font = '700 ' + item.fontSize + 'px system-ui, sans-serif'; outputCtx.textBaseline = 'top';
-        item.text.split('\n').forEach((line,index) => outputCtx.fillText(line, item.x, item.y + index * item.fontSize * 1.2, item.width));
+        outputCtx.save();outputCtx.beginPath();outputCtx.rect(item.x,item.y,item.width,item.height);outputCtx.clip();outputCtx.font = '700 ' + item.fontSize + 'px system-ui, sans-serif'; outputCtx.textBaseline = 'top';
+        const rgb=item.color.match(/[0-9a-f]{2}/ig).map(x=>parseInt(x,16)),light=(rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722)>140;
+        wrapText(outputCtx,item.text,item.width).forEach((line,index)=>{const y=item.y+index*item.fontSize*1.2;if(y>=item.y+item.height)return;
+          if(item.textBackdrop&&line){outputCtx.fillStyle=light?'rgba(0,0,0,.72)':'rgba(255,255,255,.88)';outputCtx.fillRect(item.x,y,Math.min(item.width,outputCtx.measureText(line).width+12),item.fontSize*1.16);}
+          outputCtx.fillStyle=item.color;outputCtx.fillText(line,item.x,y);});outputCtx.restore();
       }
     } catch {}
   }
@@ -179,16 +198,17 @@ $('record').addEventListener('click', async () => {
     recorder = mime ? new MediaRecorder(stream, { mimeType:mime }) : new MediaRecorder(stream);
     chunks = []; recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
     recorder.onerror = () => status('The recording encountered an error.', true);
-    recorder.onstop = () => {
+    recorder.onstop = async () => {
       canvasStream.getTracks().forEach(track => track.stop()); canvasStream = null;
+      const type = (recorder.mimeType || 'video/webm').split(';')[0], duration=currentRecordingDuration || (performance.now()-recordingStart)/1000;let blob=new Blob(chunks,{type}),warning='';
+      if(chunks.length&&type==='video/webm')try{blob=await RoomWebM.withDuration(blob,duration);}catch(error){warning=' Duration metadata could not be added; some editors may not import this recording.';}
       $('record').disabled = false; $('record').textContent = '●  Start recording'; $('recordState').textContent = 'READY TO CREATE'; $('recordState').classList.remove('recording');
       if (!chunks.length) return status('No video was recorded.', true);
-      const type = (recorder.mimeType || 'video/webm').split(';')[0], blob = new Blob(chunks, { type });
-      recordings.push({ blob, duration:currentRecordingDuration }); const option = document.createElement('option'); option.value = String(recordings.length - 1); option.textContent = 'Recording ' + recordings.length; $('recordingPicker').append(option); selectRecording(recordings.length - 1);
+      recordings.push({ blob, duration }); const option = document.createElement('option'); option.value = String(recordings.length - 1); option.textContent = 'Recording ' + recordings.length; $('recordingPicker').append(option); selectRecording(recordings.length - 1);
       $('result').classList.remove('hidden');
-      status('Recording ready. Download it or send it to Cliproom.');
+      status('Recording ready. Download it or send it to Cliproom.'+warning,!!warning);
     };
-    recorder.start(1000); recordingStart = performance.now();
+    currentRecordingDuration=0;recorder.start(1000); recordingStart = performance.now();
     $('record').textContent = '■  Stop recording'; $('recordState').textContent = 'RECORDING'; $('recordState').classList.add('recording'); status('Recording this scene. You can switch scenes while recording.');
   } catch (error) { if (canvasStream) canvasStream.getTracks().forEach(track => track.stop()); canvasStream = null; status('Could not start recording: ' + error.message, true); }
 });
