@@ -1,0 +1,76 @@
+name: Publish Windows release
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/publish-windows-release.yml']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'New release tag'
+        required: true
+        default: 'v1.0.0'
+      build_run_id:
+        description: 'Successful Windows installer workflow run ID'
+        required: true
+        default: '41058907638'
+      source_sha:
+        description: 'Full commit SHA built by that workflow run'
+        required: true
+        default: '699924ef0efb4ba3be789c63576d6fde3d716916'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    if: github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'Publish Windows installer release'
+    runs-on: windows-2025
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag || 'v1.0.0' }}
+      BUILD_RUN_ID: ${{ inputs.build_run_id || '41058907638' }}
+      SOURCE_SHA: ${{ inputs.source_sha || '699924ef0efb4ba3be789c63576d6fde3d716916' }}
+    steps:
+      - name: Verify the build and download its artifact
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$') { throw 'Invalid release tag.' }
+          if ($env:BUILD_RUN_ID -notmatch '^[0-9]+$' -or $env:SOURCE_SHA -notmatch '^[0-9a-f]{40}$') { throw 'Invalid workflow run ID or source SHA.' }
+          $runJson = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BUILD_RUN_ID"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not inspect the installer workflow run.' }
+          $run = $runJson | ConvertFrom-Json
+          if ($run.conclusion -ne 'success' -or $run.head_sha -ne $env:SOURCE_SHA -or $run.head_branch -ne 'main' -or $run.path -ne '.github/workflows/windows-installer.yml') { throw 'The installer must come from a successful main-branch Windows installer run at the specified commit.' }
+          $dir = Join-Path $env:RUNNER_TEMP 'roomsuite-release'
+          gh run download $env:BUILD_RUN_ID --repo $env:GITHUB_REPOSITORY --name RoomSuite-Windows --dir $dir
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download the verified installer artifact.' }
+          $installer = Join-Path $dir 'RoomSuite-Setup.exe'
+          $checksums = Join-Path $dir 'SHA256SUMS.txt'
+          if (-not (Test-Path -LiteralPath $installer) -or -not (Test-Path -LiteralPath $checksums)) { throw 'The artifact is missing the installer or checksum.' }
+          $expected = ((Get-Content -LiteralPath $checksums -TotalCount 1) -split '\s+')[0].ToLowerInvariant()
+          if ($expected -notmatch '^[0-9a-f]{64}$' -or (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'The installer checksum does not match the build artifact.' }
+      - name: Create the release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $refsJson = gh api "repos/$env:GITHUB_REPOSITORY/git/matching-refs/tags/$env:RELEASE_TAG"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not check existing tags.' }
+          $refs = @($refsJson | ConvertFrom-Json)
+          if ($refs | Where-Object { $_.ref -eq "refs/tags/$env:RELEASE_TAG" }) { throw 'The release tag already exists; refusing to replace it.' }
+          $dir = Join-Path $env:RUNNER_TEMP 'roomsuite-release'
+          $notes = @(
+            '## Windows installation',
+            '',
+            'Download RoomSuite-Setup.exe and run it to install RoomSuite for your Windows user. Choose the MCP option during setup to include agent tools and headless rendering.',
+            '',
+            'The installer includes Node.js. It is currently unsigned, so Windows may show an unfamiliar-publisher warning. SHA256SUMS.txt contains a checksum for the installer.',
+            '',
+            'See the repository README for Windows and Linux setup, MCP configuration, data storage, and backups.'
+          ) -join "`n"
+          $notesFile = Join-Path $dir 'release-notes.md'
+          [IO.File]::WriteAllText($notesFile, $notes, [Text.UTF8Encoding]::new($false))
+          gh release create $env:RELEASE_TAG (Join-Path $dir 'RoomSuite-Setup.exe') (Join-Path $dir 'SHA256SUMS.txt') --repo $env:GITHUB_REPOSITORY --target $env:SOURCE_SHA --title "RoomSuite $env:RELEASE_TAG" --notes-file $notesFile --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create the release; inspect GitHub for a draft before retrying.' }
