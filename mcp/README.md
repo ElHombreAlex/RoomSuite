@@ -65,6 +65,19 @@ The MCP process, its workspace, and the browser run on the agent's machine. If t
 
 The agent host's sandbox must allow the MCP process to launch Chromium, access its configured workspace, and connect to the RoomSuite URL. If any of those are blocked, the corresponding tool call returns an error.
 
+## Productivity workflows
+
+The productivity tools operate on editable files in the RoomSuite server's **Shared files**, not on paths in the agent's separate MCP workspace. A create action requires a new path with the appropriate extension; parent folders must already exist. Reads return the file's current `revision`, its state and a browser `url`. Pass that revision as `base_revision` to each edit. A stale revision fails without overwriting newer work. `roomsuite_productivity_get` and `roomsuite_productivity_save` offer full-state access for all four formats.
+
+- **DocSuite:** `docsuite_create`, `docsuite_get`, `docsuite_append_text`, `docsuite_replace_text`, `docsuite_insert_image`, `docsuite_import_docx`, `docsuite_export_docx` and `docsuite_export_pdf` create, change and exchange documents. The image action embeds a PNG, JPEG, GIF or WebP from shared files, up to 2 MiB.
+- **GridSuite:** `gridsuite_create`, `gridsuite_get`, `gridsuite_set_cells`, `gridsuite_read_cells`, `gridsuite_add_sheet`, `gridsuite_select_sheet`, `gridsuite_resize`, `gridsuite_sort_rows`, `gridsuite_set_chart`, `gridsuite_import_csv`, `gridsuite_export_csv`, `gridsuite_import_xlsx` and `gridsuite_export_xlsx` work with sheets, values, formulas, charts and file formats. Use `sheet_name` to target a worksheet; omit it to use the active sheet. An empty value clears a cell. Supported functions are `SUM`, `AVERAGE`, `MIN`, `MAX`, `COUNT`, `COUNTA`, `IF`, `AND`, `OR`, `ROUND` and `ABS`.
+- **DeckSuite:** `decksuite_create`, `decksuite_get`, `decksuite_add_slide`, `decksuite_update_slide`, `decksuite_delete_slide`, `decksuite_import_pptx`, `decksuite_export_pptx` and `decksuite_export_pdf` work with slide IDs, shared images and PowerPoint/PDF files.
+- **PlanSuite:** `plansuite_create`, `plansuite_get`, `plansuite_list_events`, `plansuite_add_event`, `plansuite_add_events`, `plansuite_update_event`, `plansuite_delete_event` and `plansuite_export_ics` manage and export local events. The batch action creates up to 52 separate events in one operation. Event timestamps must contain `Z` or an explicit UTC offset. `remind_minutes` opts an event into an ntfy reminder; delivery requires the user to configure and enable ntfy in PlanSuite and keep RoomSuite running.
+
+Office imports read from the agent workspace and create new editable files in shared storage; Office exports write new files to the agent workspace and never replace an existing output. Review `warnings` returned by conversion: complex formatting and unsupported Office objects may not be preserved. Office conversion and PDF export use the bundled or configured headless browser.
+
+For example, an agent can create `Budget.gridsuite` with cells `A1: "12"`, `A2: "8"` and `A3: "=SUM(A1:A2)"`, then call `gridsuite_read_cells` for `A3` to receive its raw formula and calculated value. The same file can be opened and edited by a person in GridSuite. See the [main guide](../README.md#productivity-suites) for file formats, limits and reminder behavior.
+
 ## Files and sessions
 
 - ROOMSUITE_MCP_WORKSPACE is the directory the agent can use for inputs and outputs. If omitted, it defaults to the ignored mcp/workspace/ directory. The directory is created if necessary.

@@ -5,6 +5,8 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
+const Productivity = require('../ProductivitySuite/model');
+const {createReminders} = require('../ProductivitySuite/reminders');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const fail = (status, message) => Object.assign(new Error(message), { status });
@@ -23,11 +25,12 @@ function isInside(root, target) { const r = path.relative(root, target); return 
 function createWorkspace({ dataDir, checkWrite, json, sendFile }) {
   const root = path.resolve(process.env.ROOMSUITE_DATA || path.join(dataDir, 'workspace'));
   const files = path.join(root, 'files'), temp = path.join(root, '.tmp'), notes = path.join(root, 'notes'), paint = path.join(root, 'paint');
+  const reminders = createReminders({root,files});
   const maxFile = limitSetting('ROOMSUITE_MAX_FILE_BYTES', 512 * 1024 * 1024);
   const maxTotal = limitSetting('ROOMSUITE_MAX_STORAGE_BYTES', 5 * 1024 * 1024 * 1024);
   let tail = Promise.resolve();
   async function locked(fn) { const current = tail.catch(() => {}).then(fn); tail = current; return current; }
-  async function init() { for (const dir of [root, files, temp, notes, paint]) await fsp.mkdir(dir, { recursive:true, mode:0o700 }); }
+  async function init() { for (const dir of [root, files, temp, notes, paint]) await fsp.mkdir(dir, { recursive:true, mode:0o700 }); reminders.start(); }
   async function usedBytes(dir = root) {
     let total = 0;
     for (const entry of await fsp.readdir(dir, { withFileTypes:true })) {
@@ -96,9 +99,50 @@ function createWorkspace({ dataDir, checkWrite, json, sendFile }) {
   function paintValues(input) {
     try { return require('../PaintRoom/model').validate(input); } catch (error) { throw fail(400,error.message); }
   }
+  function productivityKind(clean) {
+    const kind = Object.keys(Productivity.extensions).find(key => clean.toLowerCase().endsWith(Productivity.extensions[key]));
+    if (!kind) throw fail(400, 'Choose a DocSuite, GridSuite, DeckSuite or PlanSuite file.');
+    return kind;
+  }
+  async function readProductivity(clean, kind) {
+    const file=await existing(clean), stat=await fsp.stat(file);
+    if (!stat.isFile()) throw fail(400,'Choose a file.');
+    if (stat.size > 8*1024*1024) throw fail(413,'This file is too large to open.');
+    const data=await fsp.readFile(file);
+    try { return {file,revision:crypto.createHash('sha256').update(data).digest('hex'),state:Productivity.validate(JSON.parse(data.toString('utf8')),kind)}; }
+    catch (error) { throw fail(422,'Cannot open this file: '+error.message); }
+  }
   async function route(req, res, url) {
     const p = url.pathname;
     if (!p.startsWith('/api/workspace') && !p.startsWith('/api/notes') && !p.startsWith('/api/paint/projects')) return false;
+    if (p === '/api/workspace/notifications' && req.method === 'GET') { json(res,200,await reminders.settings()); return true; }
+    if (p === '/api/workspace/notifications' && req.method === 'PUT') {
+      checkWrite(req); const input=await body(req);let settings;
+      try{settings=await reminders.configure(input);}catch(error){throw fail(400,error.message);}
+      json(res,200,settings);return true;
+    }
+    if (p === '/api/workspace/notifications/test' && req.method === 'POST') {
+      checkWrite(req);try{json(res,200,await reminders.test());}catch(error){throw fail(502,error.message);}return true;
+    }
+    if (p === '/api/workspace/productivity' && req.method === 'GET') {
+      const clean=relative(url.searchParams.get('path') || ''), kind=productivityKind(clean), result=await readProductivity(clean,kind);
+      json(res,200,{path:clean,revision:result.revision,state:result.state}); return true;
+    }
+    if (p === '/api/workspace/productivity' && req.method === 'PUT') {
+      checkWrite(req);
+      const clean=relative(url.searchParams.get('path') || ''), kind=productivityKind(clean), input=await body(req,8*1024*1024);
+      if (!input || !(input.baseRevision === null || (typeof input.baseRevision === 'string' && /^[0-9a-f]{64}$/.test(input.baseRevision)))) throw fail(400,'The current revision, or null for a new file, is required.');
+      let state; try { state=Productivity.validate(input.state,kind); } catch (error) { throw fail(400,error.message); }
+      const data=JSON.stringify(state); if (utf8(data)>maxFile || utf8(data)>8*1024*1024) throw fail(413,'File exceeds the storage limit.');
+      await locked(async () => {
+        const destination=await target(clean); let current=null;
+        try { current=await readProductivity(clean,kind); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+        if (input.baseRevision === null) { if (current) throw fail(409,'A file with that name already exists.'); await absent(destination.file); }
+        else if (!current || current.revision!==input.baseRevision) throw fail(409,'This file changed or moved. Open the latest version or save a copy.');
+        await writeJson(destination.file,state);
+        json(res,200,{path:clean,revision:crypto.createHash('sha256').update(data).digest('hex'),state});
+      }); return true;
+    }
     if (p === '/api/workspace/info' && req.method === 'GET') { json(res,200,{ used_bytes:await usedBytes(), max_file_bytes:maxFile, max_storage_bytes:maxTotal }); return true; }
     if (p === '/api/workspace/list' && req.method === 'GET') {
       const location = relative(url.searchParams.get('path') || '', true), dir = await existing(location,true);

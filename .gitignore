@@ -3,5 +3,6 @@
 /.preview-data/
 /.qa/
 /mcp/node_modules/
+/ProductivitySuite/vendor-src/node_modules/
 /mcp/workspace/
 /dist/

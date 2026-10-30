@@ -1,6 +1,6 @@
 # RoomSuite
 
-RoomSuite is a self-hosted workspace for creative work, notes and shared files. One launcher opens each room in its own tab or window, so you can work in several rooms at once:
+RoomSuite is a self-hosted workspace for creative work, productivity, notes and shared files. Use the launcher switch to choose Creative or Productivity. Each room or suite opens in its own tab or window, so you can work in several at once:
 
 - **PixelRoom** — photo editing, layers, text and local subject/text isolation.
 - **Cliproom** — a multitrack video editor with a server-backed media and project library.
@@ -9,6 +9,10 @@ RoomSuite is a self-hosted workspace for creative work, notes and shared files. 
 - **VectorRoom** — create shapes, text and editable Bézier paths, with solid or gradient fills and SVG/PNG export.
 - **NotesRoom** — write Markdown notes, organize them into folders with tags, and search and autosave them on the server.
 - **PaintRoom** — paint and draw on a layered canvas, import images, transform layers, and save editable artwork.
+- **DocSuite** — write formatted documents with lists, tables, links and shared images; import/export DOCX and plain text, and print to PDF.
+- **GridSuite** — edit workbooks, calculate common formulas, make bar or line charts, and import/export XLSX and CSV.
+- **DeckSuite** — create and present slides with text and shared images, import/export PPTX, and print to PDF.
+- **PlanSuite** — keep a local calendar of events and optionally send reminders to an ntfy topic.
 - **Shared files** — upload, search, organize and transfer files between your devices and rooms.
 
 Sessions are separate for each tab, and there is no application-imposed limit on the number of open rooms. Available memory, camera access, browser behavior and device performance still affect how many can be used at once.
@@ -35,6 +39,17 @@ node server.js
 ~~~
 
 Open **http://127.0.0.1:8090/** in your browser and keep the terminal open. Press Ctrl+C to stop the server. The standard interface requires no npm install. MCP and the server-side render endpoint have [additional setup steps](mcp/README.md#install).
+
+The source checkout and the Windows installer use separate data directories by default. To run this source build with the installer's existing files, close the installed RoomSuite first, then set its data paths in the same PowerShell session before starting the source server:
+
+~~~powershell
+$roomSuiteData = if ($env:ROOMSUITE_APP_DATA) { $env:ROOMSUITE_APP_DATA } else { Join-Path $env:LOCALAPPDATA 'RoomSuite' }
+$env:CLIPROOM_DATA = Join-Path $roomSuiteData 'data\cliproom'
+$env:ROOMSUITE_DATA = Join-Path $roomSuiteData 'data\workspace'
+node server.js
+~~~
+
+Use only one RoomSuite server with a particular data directory at a time. The source build does not update the installed application; opening the installer again will run its installed version.
 
 ## Linux setup
 
@@ -74,6 +89,24 @@ Open the HTTPS URL reported by Tailscale on an authorized device. Camera, microp
 Each room opens as a separate session. Starting another tab does not replace your current work. Notes and saved PaintRoom projects persist on the server. The other browser editors keep their current sessions in memory unless you save or export them; Cliproom also has its own server-backed project and media library.
 
 Open **Shared files** to upload files from any authorized device, make folders, search, download, rename, move and delete. Use **Open in…** on a supported file or each room's shared-file button to bring it into an editor. Save exports back through the shared-file picker. The file type must be supported by the receiving room; shared files and Cliproom's media library are separate, so importing into Cliproom creates a library copy.
+
+## Productivity suites
+
+DocSuite, GridSuite, DeckSuite and PlanSuite use editable `.docsuite`, `.gridsuite`, `.decksuite` and `.plansuite` files in **the same Shared files** used by the creative rooms. Use **Save** or Ctrl+S, and choose a location the first time; **Save a copy** creates a separate file. Changes are not automatically saved. If another tab, device or agent updates a file, a revision check prevents a stale save from replacing it. Open the latest version or save your changes as a copy.
+
+DocSuite supports headings, text size and color, bold/italic/underline/strikethrough, lists, alignment, links, simple tables, and images selected from Shared files. Images are embedded in the document and must be 2 MiB or smaller. Import/export DOCX, import a plain-text or Markdown file as text, export text, or use the browser's Print / PDF command. DOCX import preserves supported text, lists, tables, links and images; complex page layout, comments, some styles and other Word features may be simplified. DOCX export is an editable Word document generated from the content represented in DocSuite.
+
+GridSuite supports up to 20 sheets per workbook, each with up to 500 rows and 52 columns. Enter values or formulas with arithmetic, comparisons, text concatenation, cell references and ranges. Supported functions are `SUM`, `AVERAGE`, `MIN`, `MAX`, `COUNT`, `COUNTA`, `IF`, `AND`, `OR`, `ROUND` and `ABS`. Circular references and invalid formulas show an error. Sort by a selected column with row 1 kept as a header; sorting is disabled for sheets containing formulas or imported cell metadata, because moving them could change their meaning. Import/export XLSX and CSV, and create one bar or line chart per sheet from matching single-row or single-column ranges of up to 30 values. XLSX import keeps worksheet names, values, formulas, dates and number formats; other formatting, charts, pivot tables and external links may be simplified or omitted. Unsupported Excel formulas remain in the workbook for export but may not calculate in GridSuite. GridSuite charts are not included in XLSX exports. CSV represents the active sheet and contains raw cell values and formulas.
+
+DeckSuite supports up to 100 slides, each with a title, text, background color and an optional embedded shared image of up to 2 MiB. Add, duplicate, reorder or delete slides, present in the browser, import/export PPTX, or print to PDF. PPTX import keeps slide order, text and one supported image per slide. Layout, formatting, animations, charts and other objects may be simplified or omitted; exported slides use DeckSuite's layout.
+
+Office conversion runs locally in the browser. Imported files are opened as new RoomSuite work; the original is not changed, and the app shows conversion warnings before import. Export to the device or directly to Shared files. Office archives are limited to 20 MiB compressed and 64 MiB expanded; encrypted and ZIP64 archives are not supported. The bundled conversion libraries and license notices are in `ProductivitySuite/vendor/`.
+
+PlanSuite stores events with start and end times and displays them in the device's local time zone. A calendar is saved as a shared file and can be exported as an `.ics` calendar. When creating an event, daily, weekly or monthly repetition can create up to 52 separate events; edits and deletions affect only the selected occurrence. There is no calendar synchronization. The server must be running for reminders.
+
+To use optional ntfy reminders, open **ntfy reminders** in PlanSuite and enter your server URL and topic. A bearer access token is optional; it is stored in the RoomSuite data directory, not returned by the settings API, and should be treated like a password. Use HTTPS for remote servers and an unguessable or protected topic: the notification contains the event title and start time. Subscribe to the same topic in an ntfy client and use **Send test** after saving settings. RoomSuite checks saved calendars roughly every 30 seconds and sends a reminder when due, retrying failed sends while the event is upcoming and for a short grace period after its start. It keeps a local delivery record to reduce duplicates; delivery is best effort, and an interruption during a send can result in a duplicate. The ntfy server receives the notification when it is sent. See [ntfy's publishing documentation](https://docs.ntfy.sh/publish/) for its topic and access-control behavior.
+
+Productivity files are limited to 8 MiB, or a lower configured RoomSuite per-file limit. They use the same storage quota and backup as other shared files. The optional MCP server can create and edit these files using the same revision checks; see the [MCP guide](mcp/README.md#productivity-workflows).
 
 SoundRoom and CaptureRoom have a **Send to Cliproom** button; VectorRoom can send a PNG. Sending is an explicit upload to your Cliproom server. Once the upload completes, select **Open in Cliproom** to add it to a new Cliproom project. Save that project in Cliproom if you want to reopen it later. Media remains on the server after an upload even if it is not added to a saved project; consult the Cliproom guide for storage and backup details.
 

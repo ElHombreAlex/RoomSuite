@@ -58,6 +58,12 @@ test('notes preserve revisions, Markdown, tags and folders', async () => {
   assert.equal((await request('/api/notes/folders','DELETE',{path:'Work/Projects'})).status,200);
   assert.equal((await request('/api/notes/folders','DELETE',{path:'Work'})).status,200);
 });
+test('productivity saves obey the shared file limit',async()=>{
+  const Model=require('../ProductivitySuite/model'),route='/api/workspace/productivity?path=limit.docsuite',state=Model.empty('docsuite',()=> 'id');
+  assert.equal((await request(route,'PUT',{baseRevision:null,state:{...state,html:'x'.repeat(5000)}})).status,413);
+  assert.equal((await request(route,'PUT',{baseRevision:null,state})).status,200);
+  assert.equal((await request('/api/workspace/delete','POST',{path:'limit.docsuite'})).status,200);
+});
 test('PaintRoom projects can be saved and reopened without overwriting newer edits', async () => {
   const id=crypto.randomUUID(), state=require('../PaintRoom/model').empty(()=>crypto.randomUUID(),'Canvas',640,480);
   const route='/api/paint/projects/'+id;

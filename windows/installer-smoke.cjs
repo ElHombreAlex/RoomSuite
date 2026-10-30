@@ -33,7 +33,7 @@ async function scenario(temp, mode) {
   const group='RoomSuite-Test-'+path.basename(temp);
   try {
     run(installer,['/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOICONS','/SP-',`/GROUP=${group}`,`/DIR=${dir}`,`/TYPE=${mode}`,`/LOG=${path.join(temp,mode+'-install.log')}`]);
-    await fs.access(path.join(dir,'runtime','node.exe'));await fs.access(path.join(dir,'RoomSuite.exe'));await fs.access(path.join(dir,'PixelRoom','dist','index.html'));
+    await fs.access(path.join(dir,'runtime','node.exe'));await fs.access(path.join(dir,'RoomSuite.exe'));await fs.access(path.join(dir,'PixelRoom','dist','index.html'));await fs.access(path.join(dir,'ProductivitySuite','vendor','exceljs.js'));await fs.access(path.join(dir,'ProductivitySuite','vendor','fflate.js'));
     const mcpDir=path.join(dir,'mcp','node_modules');
     if(mode==='typical')await assert.rejects(fs.stat(mcpDir),{code:'ENOENT'});else await fs.access(path.join(mcpDir,'playwright','package.json'));
     run(path.join(dir,'RoomSuite.exe'),['--self-test'],env);
@@ -52,6 +52,9 @@ async function scenario(temp, mode) {
       try {
         const configPath=path.join(data,'mcp-config.json');run(path.join(dir,'RoomSuite.exe'),['--export-mcp-config',configPath],env);const config=JSON.parse(await fs.readFile(configPath,'utf8')).mcpServers.roomsuite;assert.equal(config.command,path.join(dir,'runtime','node.exe'));assert.deepEqual(config.args,[path.join(dir,'mcp','server.mjs')]);assert.equal(config.env.ROOMSUITE_MCP_WORKSPACE,workspace);assert.equal(config.env.ROOMSUITE_MCP_URL,`http://127.0.0.1:${portNumber}`);assert.equal(config.env.PLAYWRIGHT_BROWSERS_PATH,path.join(dir,'browsers'));
         await client.connect(new StdioClientTransport({command:config.command,args:config.args,env:{...serverEnv,...config.env},stderr:'pipe'}));
+        await request(client,'docsuite_create',{path:'installer.docsuite',title:'Installer document',text:'Office compatibility'});const word=await request(client,'docsuite_export_docx',{path:'installer.docsuite',output:'installer.docx'});assert.ok(word.structuredContent.bytes>1000);
+        await request(client,'gridsuite_create',{path:'installer.gridsuite',title:'Installer workbook',cells:{A1:'12',A2:'=A1*2'}});const excel=await request(client,'gridsuite_export_xlsx',{path:'installer.gridsuite',output:'installer.xlsx'});assert.ok(excel.structuredContent.bytes>1000);
+        await request(client,'decksuite_create',{path:'installer.decksuite',title:'Installer presentation'});const powerpoint=await request(client,'decksuite_export_pptx',{path:'installer.decksuite',output:'installer.pptx'});assert.ok(powerpoint.structuredContent.bytes>1000);
         const created=await request(client,'paintroom_create',{name:'Installer test',width:100,height:100,include_preview:true,elements:[{type:'rect',x:0,y:0,x2:100,y2:100,fill:'#dd4400'}]});assert.ok(created.content.some(item=>item.type==='image'));
         await request(client,'paintroom_export',{project_id:created.structuredContent.project_id,format:'png',output:'frame.png'});
         const video=await request(client,'cliproom_render',{output:'test.webm',render_mode:'offline',preview_times:[0.1],frame_sequence:{frames:['frame.png'],fps:2,duration:.5}});assert.ok(video.structuredContent.bytes>1000);assert.ok(video.content.some(item=>item.type==='image'));assert.equal(video.structuredContent.verification.frames.length,1);

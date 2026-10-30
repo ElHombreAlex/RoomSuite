@@ -12,7 +12,7 @@ test('Windows bundle stages application files without local data or dependency d
   try {
     const run=()=>spawnSync(process.execPath,[path.join(root,'windows','prepare-bundle.cjs'),dest],{encoding:'utf8'});
     const result=run();assert.equal(result.status,0,result.stderr);
-    await fs.access(path.join(dest,'server.js'));await fs.access(path.join(dest,'PaintRoom','model.js'));await fs.access(path.join(dest,'PixelRoom','dist','index.html'));await fs.access(path.join(dest,'mcp','server.mjs'));
+    await fs.access(path.join(dest,'server.js'));await fs.access(path.join(dest,'PaintRoom','model.js'));await fs.access(path.join(dest,'PixelRoom','dist','index.html'));await fs.access(path.join(dest,'ProductivitySuite','app.js'));await fs.access(path.join(dest,'ProductivitySuite','reminders.js'));await fs.access(path.join(dest,'ProductivitySuite','vendor','exceljs.js'));await fs.access(path.join(dest,'ProductivitySuite','vendor','fflate.js'));await fs.access(path.join(dest,'mcp','server.mjs'));
     await assert.rejects(fs.stat(path.join(dest,'mcp','node_modules')),{code:'ENOENT'});await assert.rejects(fs.stat(path.join(dest,'mcp','workspace')),{code:'ENOENT'});await assert.rejects(fs.stat(path.join(dest,'cliproom','data')),{code:'ENOENT'});
     assert.notEqual(run().status,0,'existing staging directories must never be overwritten');
   } finally { const actual=await fs.realpath(temp),parent=await fs.realpath(os.tmpdir());assert.equal(path.dirname(actual),parent);assert.ok(path.basename(actual).startsWith('roomsuite-bundle-test-'));await fs.rm(actual,{recursive:true,force:true}); }

@@ -23,7 +23,7 @@ const MAX_PROJECT = 2 * 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const mediaTypes = new Set(['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-m4v', 'video/mpeg', 'audio/mpeg', 'audio/mp4', 'audio/x-m4a', 'audio/ogg', 'audio/wav', 'audio/wave', 'audio/x-wav', 'audio/webm', 'audio/aac', 'audio/flac', 'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif']);
 const publicFiles = { '/': ['index.html', 'text/html; charset=utf-8'], '/index.html': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/timeline.js': ['timeline.js', 'text/javascript; charset=utf-8'], '/webm-duration.js': ['webm-duration.js', 'text/javascript; charset=utf-8'], '/offline-render.js': ['offline-render.js', 'text/javascript; charset=utf-8'], '/styles.css': ['styles.css', 'text/css; charset=utf-8'] };
-const suiteRoots = { '/suite/': 'suite', '/soundroom/': 'SoundRoom', '/captureroom/': 'CaptureRoom', '/vectorroom/': 'VectorRoom', '/pixelroom/': 'PixelRoom/dist', '/notesroom/':'NotesRoom', '/paintroom/':'PaintRoom', '/files/':'FilesRoom' };
+const suiteRoots = { '/suite/': 'suite', '/soundroom/': 'SoundRoom', '/captureroom/': 'CaptureRoom', '/vectorroom/': 'VectorRoom', '/pixelroom/': 'PixelRoom/dist', '/notesroom/':'NotesRoom', '/paintroom/':'PaintRoom', '/files/':'FilesRoom', '/docsuite/':'ProductivitySuite', '/gridsuite/':'ProductivitySuite', '/decksuite/':'ProductivitySuite', '/plansuite/':'ProductivitySuite' };
 const suiteTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.onnx': 'application/octet-stream', '.bin': 'application/octet-stream', '.gz': 'application/gzip', '.txt': 'text/plain; charset=utf-8', '.woff': 'font/woff', '.woff2': 'font/woff2' };
 const locks = new Map();
 
@@ -99,7 +99,7 @@ async function route(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const pathname = url.pathname;
   if (SUITE_MODE && (req.method === 'GET' || req.method === 'HEAD')) {
-    if (['/cliproom', '/soundroom', '/captureroom', '/vectorroom', '/pixelroom', '/notesroom', '/paintroom', '/files'].includes(pathname)) {
+    if (['/cliproom', '/soundroom', '/captureroom', '/vectorroom', '/pixelroom', '/notesroom', '/paintroom', '/files', '/docsuite', '/gridsuite', '/decksuite', '/plansuite'].includes(pathname)) {
       res.writeHead(308, { Location: pathname + '/' }); return res.end();
     }
     if (pathname === '/' || pathname === '/index.html') {

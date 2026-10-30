@@ -1,0 +1,22 @@
+{
+  "name": "roomsuite-office-vendor",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Pinned browser libraries used for local Office format conversion",
+  "dependencies": {
+    "docx": "9.15.0",
+    "exceljs": "4.4.0",
+    "fflate": "0.8.3",
+    "jszip": "3.10.2",
+    "mammoth": "1.13.0",
+    "pptxgenjs": "4.0.1"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "11.1.1"
+    },
+    "pptxgenjs": {
+      "image-size": "2.0.4"
+    }
+  }
+}

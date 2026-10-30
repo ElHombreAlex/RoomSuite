@@ -7,7 +7,8 @@ function choices(name){const ext=name.split('.').pop().toLowerCase(), out=[];
   if(['png','jpg','jpeg','webp','gif','avif'].includes(ext))out.push(['PaintRoom','/paintroom/'],['PixelRoom','/pixelroom/'],['VectorRoom','/vectorroom/'],['CaptureRoom','/captureroom/'],['Cliproom','/cliproom/']);
   if(['paintroom'].includes(ext))out.push(['PaintRoom','/paintroom/']);if(['pixelroom'].includes(ext))out.push(['PixelRoom','/pixelroom/']);if(['vectorroom'].includes(ext))out.push(['VectorRoom','/vectorroom/']);
   if(['mp3','wav','m4a','ogg','flac'].includes(ext))out.push(['SoundRoom','/soundroom/'],['Cliproom','/cliproom/']);
-  if(['mp4','webm','mov','m4v'].includes(ext))out.push(['Cliproom','/cliproom/']);if(['md','txt'].includes(ext))out.push(['NotesRoom','/notesroom/']);return out;}
+  if(['mp4','webm','mov','m4v'].includes(ext))out.push(['Cliproom','/cliproom/']);if(['md','txt'].includes(ext))out.push(['NotesRoom','/notesroom/']);
+  if(['docsuite','docx'].includes(ext))out.push(['DocSuite','/docsuite/']);if(['gridsuite','csv','xlsx'].includes(ext))out.push(['GridSuite','/gridsuite/']);if(['decksuite','pptx'].includes(ext))out.push(['DeckSuite','/decksuite/']);if(ext==='plansuite')out.push(['PlanSuite','/plansuite/']);return out;}
 async function refresh(){
   const requestId=++refreshId,query=$('search').value.trim();
   try{const [result,usage]=await Promise.all([query?RoomShared.request('/api/workspace/search?'+new URLSearchParams({q:query})).then(r=>r.json()):RoomShared.list(folder),RoomShared.request('/api/workspace/info').then(r=>r.json())]);if(requestId!==refreshId)return;if(!query)folder=result.path;$('currentFolder').textContent=query?'Search results':folder||'Shared files';$('up').disabled=!folder;

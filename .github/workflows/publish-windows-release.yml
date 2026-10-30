@@ -9,15 +9,13 @@ on:
       tag:
         description: 'New release tag'
         required: true
-        default: 'v1.0.0'
+        default: 'v2.0.0'
       build_run_id:
         description: 'Successful Windows installer workflow run ID'
         required: true
-        default: '41058907638'
       source_sha:
         description: 'Full commit SHA built by that workflow run'
         required: true
-        default: '699924ef0efb4ba3be789c63576d6fde3d716916'
 
 permissions:
   contents: write
@@ -30,9 +28,9 @@ jobs:
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
-      RELEASE_TAG: ${{ inputs.tag || 'v1.0.0' }}
-      BUILD_RUN_ID: ${{ inputs.build_run_id || '41058907638' }}
-      SOURCE_SHA: ${{ inputs.source_sha || '699924ef0efb4ba3be789c63576d6fde3d716916' }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      BUILD_RUN_ID: ${{ inputs.build_run_id }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
     steps:
       - name: Verify the build and download its artifact
         shell: pwsh
@@ -62,6 +60,13 @@ jobs:
           if ($refs | Where-Object { $_.ref -eq "refs/tags/$env:RELEASE_TAG" }) { throw 'The release tag already exists; refusing to replace it.' }
           $dir = Join-Path $env:RUNNER_TEMP 'roomsuite-release'
           $notes = @(
+            '## What is new',
+            '',
+            '- Switch between creative rooms and the new productivity suites, with shared files available in both views.',
+            '- DocSuite, GridSuite and DeckSuite can import and export DOCX, XLSX and PPTX locally. Conversion may simplify unsupported formatting and objects; review the warnings and keep the original files.',
+            '- PlanSuite provides local calendar events, optional ntfy reminders and iCalendar export.',
+            '- MCP tools let agents create, inspect, edit and exchange documents, workbooks, slides and calendar events.',
+            '',
             '## Windows installation',
             '',
             'Download RoomSuite-Setup.exe and run it to install RoomSuite for your Windows user. Choose the MCP option during setup to include agent tools and headless rendering.',

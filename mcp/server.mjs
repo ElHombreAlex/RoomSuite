@@ -5,6 +5,7 @@ import { workspace, listFiles } from './files.mjs';
 import { serverUrl, editImage, inpaintImage, editAudio, createVector, previewVector, recordScene, renderVideo, renderSavedProject, inspectMedia, importCliproomMedia } from './rooms.mjs';
 import { listProjects, getProject, saveProject } from './projects.mjs';
 import { registerWorkspace } from './register-workspace.mjs';
+import { registerProductivity } from './register-productivity.mjs';
 import { imageContent } from './preview.mjs';
 import { previewVideo } from './video-preview.mjs';
 
@@ -76,7 +77,7 @@ function buildServer() {
     annotations:{ readOnlyHint:true, destructiveHint:false, openWorldHint:false }
   }, handler(async () => ({
     workspace:await workspace(), server_url:serverUrl(),
-    rooms:['roomsuite_list_files','roomsuite_media_info','roomsuite_preview_image','roomsuite_preview_video','roomsuite_write_begin','roomsuite_write_append','roomsuite_write_finish','roomsuite_write_abort','roomsuite_shared_list','roomsuite_shared_search','roomsuite_shared_upload','roomsuite_shared_download','roomsuite_shared_mkdir','roomsuite_shared_move','roomsuite_shared_delete','notesroom_list','notesroom_get','notesroom_create','notesroom_update','notesroom_delete','notesroom_folders','notesroom_delete_folder','paintroom_list','paintroom_get','paintroom_create','paintroom_import_project','paintroom_clone','paintroom_edit','paintroom_preview','paintroom_preview_sheet','paintroom_export','paintroom_export_batch','pixelroom_edit','pixelroom_inpaint','soundroom_edit','vectorroom_create','vectorroom_preview','captureroom_record_scene','cliproom_import_media','cliproom_list_projects','cliproom_get_project','cliproom_save_project','cliproom_render','cliproom_render_project'],
+    rooms:['roomsuite_list_files','roomsuite_media_info','roomsuite_preview_image','roomsuite_preview_video','roomsuite_write_begin','roomsuite_write_append','roomsuite_write_finish','roomsuite_write_abort','roomsuite_shared_list','roomsuite_shared_search','roomsuite_shared_upload','roomsuite_shared_download','roomsuite_shared_mkdir','roomsuite_shared_move','roomsuite_shared_delete','notesroom_list','notesroom_get','notesroom_create','notesroom_update','notesroom_delete','notesroom_folders','notesroom_delete_folder','paintroom_list','paintroom_get','paintroom_create','paintroom_import_project','paintroom_clone','paintroom_edit','paintroom_preview','paintroom_preview_sheet','paintroom_export','paintroom_export_batch','pixelroom_edit','pixelroom_inpaint','soundroom_edit','vectorroom_create','vectorroom_preview','captureroom_record_scene','cliproom_import_media','cliproom_list_projects','cliproom_get_project','cliproom_save_project','cliproom_render','cliproom_render_project','roomsuite_productivity_get','roomsuite_productivity_save','docsuite_create','docsuite_get','docsuite_append_text','docsuite_replace_text','docsuite_insert_image','docsuite_export_pdf','docsuite_import_docx','docsuite_export_docx','gridsuite_create','gridsuite_get','gridsuite_set_cells','gridsuite_read_cells','gridsuite_set_chart','gridsuite_resize','gridsuite_sort_rows','gridsuite_add_sheet','gridsuite_select_sheet','gridsuite_import_csv','gridsuite_export_csv','gridsuite_import_xlsx','gridsuite_export_xlsx','decksuite_create','decksuite_get','decksuite_add_slide','decksuite_update_slide','decksuite_delete_slide','decksuite_export_pdf','decksuite_import_pptx','decksuite_export_pptx','plansuite_create','plansuite_get','plansuite_list_events','plansuite_add_event','plansuite_add_events','plansuite_update_event','plansuite_delete_event','plansuite_export_ics'],
     notes:['Input and output files must be inside the configured MCP workspace; existing output files are never overwritten.', 'Editor-based tools use isolated headless browser sessions.', 'Cliproom imports media into the server library; it remains there after the call.', 'Updating a saved Cliproom project requires its current revision.', 'CaptureRoom live screen, camera and microphone access require an interactive user and are not exposed by this MCP server.']
   })));
   server.registerTool('roomsuite_list_files', {
@@ -191,6 +192,7 @@ function buildServer() {
     }), outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(renderWithPreview(renderSavedProject)));
   registerWorkspace(server,{handler,file,artifact});
+  registerProductivity(server,{handler,file,artifact});
   return server;
 }
 serveStdio(buildServer, { onerror:error => console.error('RoomSuite MCP:', error.message) });

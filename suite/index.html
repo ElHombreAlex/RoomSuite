@@ -2,17 +2,19 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f8f8f6"><title>RoomSuite — your creative rooms</title>
+  <meta name="theme-color" content="#f8f8f6"><title>RoomSuite — your space to create and get things done</title>
   <link rel="stylesheet" href="/suite/common.css"><link rel="stylesheet" href="/suite/home.css">
+  <script defer src="/suite/home.js"></script>
 </head>
 <body>
-  <header class="topbar"><a class="logo" href="/" aria-label="RoomSuite home"><span class="logo-mark">✳</span><span>room<span class="dot">suite</span></span></a><span class="top-divider"></span><span class="top-title">Your creative space</span><div class="top-actions"><span class="pill">SELF-HOSTED &amp; YOURS</span></div></header>
+  <header class="topbar"><a class="logo" href="/" aria-label="RoomSuite home"><span class="logo-mark">✳</span><span>room<span class="dot">suite</span></span></a><span class="top-divider"></span><span class="top-title">Your space to create and get things done</span><div class="top-actions"><span class="pill">SELF-HOSTED &amp; YOURS</span></div></header>
   <main class="home">
     <section class="hero">
-      <div class="hero-copy"><div class="eyebrow">A LITTLE SPACE TO MAKE THINGS</div><h1>Big ideas deserve<br>a room of their own<span class="dot">.</span></h1><p>Photos, videos, sound and more — all together in your own creative space. Pick a room and make yourself at home.</p><a class="btn primary" href="#rooms">Explore the rooms <span aria-hidden="true">↗</span></a></div>
+      <div class="hero-copy"><div class="eyebrow">A LITTLE SPACE TO MAKE THINGS</div><h1>Big ideas deserve<br>a space of their own<span class="dot">.</span></h1><p>Create, plan, write and make things happen — all together in your own space.</p><a class="btn primary" href="#rooms">Explore your workspace <span aria-hidden="true">↗</span></a></div>
       <div class="hero-art" aria-hidden="true"><div class="art-card art-a">✦</div><div class="art-card art-b"><span>●</span><span>●</span><span>●</span><div class="art-line"></div><div class="art-wave">∿∿∿∿</div></div><div class="art-card art-c">▶</div><div class="art-spark">✳</div></div>
     </section>
-    <section id="rooms" class="rooms"><div class="rooms-heading"><div><div class="eyebrow">THE CREATIVE COLLECTION</div><h2>Find your room<span class="dot">.</span></h2><p>Every room opens separately, so you can keep a few projects going at once.</p></div><span class="room-count">08 ROOMS &nbsp; ✳</span></div>
+    <section id="rooms" class="rooms"><div class="view-switch" role="group" aria-label="Workspace view"><span class="switch-label">YOUR WORKSPACE</span><button type="button" data-view="creative" aria-pressed="true">✳ &nbsp; Creative</button><button type="button" data-view="productivity" aria-pressed="false">▦ &nbsp; Productivity</button></div>
+      <div id="creative-view"><div class="rooms-heading"><div><div class="eyebrow">THE CREATIVE COLLECTION</div><h2>Find your room<span class="dot">.</span></h2><p>Every room opens separately, so you can keep a few projects going at once.</p></div><span class="room-count">07 CREATIVE ROOMS &nbsp; ✳</span></div>
       <div class="room-grid">
         <a class="room-card" href="/pixelroom/" target="_blank" rel="noopener"><span class="room-icon peach">▧</span><span class="room-number">01 / IMAGE</span><h3>PixelRoom<span class="dot">.</span></h3><p>Edit photos, create compositions and isolate the details that matter.</p><span class="room-link">Open room ↗</span></a>
         <a class="room-card" href="/cliproom/" target="_blank" rel="noopener"><span class="room-icon lavender">▶</span><span class="room-number">02 / VIDEO</span><h3>Cliproom<span class="dot">.</span></h3><p>Bring clips, audio and titles together to tell your story.</p><span class="room-link">Open room ↗</span></a>
@@ -21,9 +23,18 @@
         <a class="room-card" href="/vectorroom/" target="_blank" rel="noopener"><span class="room-icon pink">◇</span><span class="room-number">05 / DESIGN</span><h3>VectorRoom<span class="dot">.</span></h3><p>Draw shapes, paths and type, and take your artwork away as SVG.</p><span class="room-link">Open room ↗</span></a>
         <a class="room-card" href="/notesroom/" target="_blank" rel="noopener"><span class="room-icon mint">✎</span><span class="room-number">06 / NOTES</span><h3>NotesRoom<span class="dot">.</span></h3><p>Keep ideas, project notes and Markdown together across your devices.</p><span class="room-link">Open room ↗</span></a>
         <a class="room-card" href="/paintroom/" target="_blank" rel="noopener"><span class="room-icon peach">✿</span><span class="room-number">07 / DRAW</span><h3>PaintRoom<span class="dot">.</span></h3><p>Draw, paint, and build layered artwork on your own canvas.</p><span class="room-link">Open room ↗</span></a>
-        <a class="room-card" href="/files/" target="_blank" rel="noopener"><span class="room-icon lavender">▣</span><span class="room-number">08 / SHARED</span><h3>Shared files<span class="dot">.</span></h3><p>Keep files on your server and move them between rooms and devices.</p><span class="room-link">Browse files ↗</span></a>
         <a class="room-card note-card" href="/cliproom/?projects=1" target="_blank" rel="noopener"><span class="room-icon pale">✳</span><span class="room-number">YOUR SPACE</span><h3>Your projects<span class="dot">.</span></h3><p>Open or manage Cliproom projects saved on your RoomSuite server.</p><span class="room-link">Browse projects ↗</span></a>
       </div>
+      </div>
+      <div id="productivity-view" hidden><div class="rooms-heading"><div><div class="eyebrow">THE PRODUCTIVITY COLLECTION</div><h2>Make room for the everyday<span class="dot">.</span></h2><p>Write, calculate, present and plan in your own workspace.</p></div><span class="room-count">04 PRODUCTIVITY SUITES &nbsp; ✳</span></div>
+        <div class="room-grid">
+          <a class="room-card" href="/docsuite/" target="_blank" rel="noopener"><span class="room-icon peach">▤</span><span class="room-number">01 / DOCUMENTS</span><h3>DocSuite<span class="dot">.</span></h3><p>Write and format documents, and bring in images from your creative work.</p><span class="room-link">Open suite ↗</span></a>
+          <a class="room-card" href="/gridsuite/" target="_blank" rel="noopener"><span class="room-icon mint">▦</span><span class="room-number">02 / SPREADSHEETS</span><h3>GridSuite<span class="dot">.</span></h3><p>Organize information, work with formulas, and exchange CSV files.</p><span class="room-link">Open suite ↗</span></a>
+          <a class="room-card" href="/decksuite/" target="_blank" rel="noopener"><span class="room-icon lavender">▣</span><span class="room-number">03 / PRESENTATIONS</span><h3>DeckSuite<span class="dot">.</span></h3><p>Turn ideas and shared artwork into a presentation.</p><span class="room-link">Open suite ↗</span></a>
+          <a class="room-card" href="/plansuite/" target="_blank" rel="noopener"><span class="room-icon yellow">▧</span><span class="room-number">04 / CALENDAR</span><h3>PlanSuite<span class="dot">.</span></h3><p>Keep events and everyday plans together in your own calendar.</p><span class="room-link">Open suite ↗</span></a>
+        </div>
+      </div>
+      <div class="shared-home"><div><div class="eyebrow">ONE SPACE, SHARED ACROSS THE SUITE</div><h2>Shared files<span class="dot">.</span></h2><p>Keep your work together and move it between creative and productivity tools.</p></div><a class="btn primary" href="/files/" target="_blank" rel="noopener">Browse shared files ↗</a></div>
     </section>
   </main>
   <footer class="footer"><span>✳ &nbsp; RoomSuite</span><span>A little space for big ideas.</span></footer>
