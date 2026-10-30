@@ -6,11 +6,13 @@ import { serverUrl, editImage, editAudio, createVector, previewVector, recordSce
 import { listProjects, getProject, saveProject } from './projects.mjs';
 import { registerWorkspace } from './register-workspace.mjs';
 import { imageContent } from './preview.mjs';
+import { previewVideo } from './video-preview.mjs';
 
 const file = z.string().min(1).max(4096).describe('Path relative to the MCP workspace, or an absolute path inside it.');
 const color = z.string().regex(/^#[0-9a-f]{6}$/i).describe('Six-digit hex color, such as #ffffff.');
 const coord = z.number().finite().min(-100000).max(100000);
 const seconds = z.number().finite().min(0).max(86400);
+const previewTimes=z.array(seconds).min(1).max(12).optional().describe('Optional encoded-output timestamps in seconds to inspect after rendering.');
 const captureBox=z.object({x:z.number().min(-3000).max(3000),y:z.number().min(-3000).max(3000),width:z.number().min(1).max(3000),height:z.number().min(1).max(3000)});
 const shapeStyle = {
   fill_mode:z.enum(['solid','gradient','none']).optional(), fill:color.optional(), fill2:color.optional(),
@@ -33,7 +35,7 @@ const animation = {
   volume:z.number().min(0).max(1).optional()
 };
 const media = z.object({
-  input:file, track:z.number().int().min(1).max(100).optional().describe('Video or audio track, starting at 1.'),
+  input:file.optional(),asset_id:z.string().uuid().optional().describe('Reuse an existing Cliproom library asset instead of uploading input.'), track:z.number().int().min(1).max(100).optional().describe('Video or audio track, starting at 1.'),
   start:seconds.optional().describe('Timeline start in seconds. Omit to append on this track.'),
   source_in:seconds.optional(), source_out:seconds.optional(), duration:z.number().positive().max(3600).optional().describe('For a still image, source end time in seconds; with source_in 0, this is the source duration before applying speed.'),
   speed:z.number().min(0.5).max(4).optional(), ...animation,
@@ -63,6 +65,7 @@ function handler(fn) {
     catch (error) { return { isError:true, content:[{ type:'text', text:error?.message || String(error) }] }; }
   };
 }
+function renderWithPreview(fn){return async(args,signal,progress)=>{const result=await fn(args,signal,progress);if(!args.preview_times)return result;try{const preview=await previewVideo({input:result.path,times:args.preview_times},signal),{preview:picture,[imageContent]:images,...verification}=preview;return {...result,verification,preview:picture,[imageContent]:images};}catch(error){return {...result,preview_error:'Video was saved, but inspection failed: '+error.message};}};}
 function buildServer() {
   const server = new McpServer({ name:'roomsuite', version:'0.1.0' });
   server.registerTool('roomsuite_info', {
@@ -73,7 +76,7 @@ function buildServer() {
     annotations:{ readOnlyHint:true, destructiveHint:false, openWorldHint:false }
   }, handler(async () => ({
     workspace:await workspace(), server_url:serverUrl(),
-    rooms:['roomsuite_list_files','roomsuite_media_info','roomsuite_preview_image','roomsuite_shared_list','roomsuite_shared_search','roomsuite_shared_upload','roomsuite_shared_download','roomsuite_shared_mkdir','roomsuite_shared_move','roomsuite_shared_delete','notesroom_list','notesroom_get','notesroom_create','notesroom_update','notesroom_delete','notesroom_folders','notesroom_delete_folder','paintroom_list','paintroom_get','paintroom_create','paintroom_edit','paintroom_preview','paintroom_preview_sheet','paintroom_export','pixelroom_edit','soundroom_edit','vectorroom_create','vectorroom_preview','captureroom_record_scene','cliproom_import_media','cliproom_list_projects','cliproom_get_project','cliproom_save_project','cliproom_render','cliproom_render_project'],
+    rooms:['roomsuite_list_files','roomsuite_media_info','roomsuite_preview_image','roomsuite_preview_video','roomsuite_write_begin','roomsuite_write_append','roomsuite_write_finish','roomsuite_write_abort','roomsuite_shared_list','roomsuite_shared_search','roomsuite_shared_upload','roomsuite_shared_download','roomsuite_shared_mkdir','roomsuite_shared_move','roomsuite_shared_delete','notesroom_list','notesroom_get','notesroom_create','notesroom_update','notesroom_delete','notesroom_folders','notesroom_delete_folder','paintroom_list','paintroom_get','paintroom_create','paintroom_import_project','paintroom_clone','paintroom_edit','paintroom_preview','paintroom_preview_sheet','paintroom_export','paintroom_export_batch','pixelroom_edit','soundroom_edit','vectorroom_create','vectorroom_preview','captureroom_record_scene','cliproom_import_media','cliproom_list_projects','cliproom_get_project','cliproom_save_project','cliproom_render','cliproom_render_project'],
     notes:['Input and output files must be inside the configured MCP workspace; existing output files are never overwritten.', 'Editor-based tools use isolated headless browser sessions.', 'Cliproom imports media into the server library; it remains there after the call.', 'Updating a saved Cliproom project requires its current revision.', 'CaptureRoom live screen, camera and microphone access require an interactive user and are not exposed by this MCP server.']
   })));
   server.registerTool('roomsuite_list_files', {
@@ -90,6 +93,11 @@ function buildServer() {
     outputSchema:z.object({name:z.string(),bytes:z.number(),mime_type:z.string(),kind:z.string(),width:z.number().nullable(),height:z.number().nullable(),duration_seconds:z.number().nullable()}),
     annotations:{ readOnlyHint:true, destructiveHint:false, openWorldHint:false }
   }, handler(inspectMedia));
+  server.registerTool('roomsuite_preview_video', {
+    title:'Inspect frames from an exported video',description:'Decode one or more timestamps from the actual workspace video and return a labeled image sheet, actual presentation timestamps and track metadata. Times must be within the video track.',
+    inputSchema:z.object({input:file,times:z.array(seconds).min(1).max(12),columns:z.number().int().min(1).max(4).optional(),max_dimension:z.number().int().min(256).max(1536).optional()}),
+    outputSchema:z.object({name:z.string(),bytes:z.number(),mime_type:z.string(),width:z.number(),height:z.number(),video_codec:z.string().nullable(),video_tracks:z.number(),audio_tracks:z.array(z.object({number:z.number(),codec:z.string().nullable()})),video_start_seconds:z.number(),video_end_seconds:z.number(),duration_seconds:z.number(),metadata_duration_seconds:z.number().nullable(),frames:z.array(z.object({requested_time:z.number(),presentation_time:z.number(),duration:z.number()})),preview:z.object({width:z.number(),height:z.number(),bytes:z.number(),mime_type:z.literal('image/png')})}),annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}
+  },handler(previewVideo));
   server.registerTool('cliproom_import_media', {
     title:'Import media into Cliproom',
     description:'Import an image, video, or audio file into the Cliproom server library and return its asset metadata for use in projects. The uploaded asset remains on the server; no project is saved.',
@@ -160,12 +168,12 @@ function buildServer() {
       output:file.describe('New output filename stem, or a filename with the browser-supported video extension.'),
       name:z.string().min(1).max(160).optional(), aspect:z.enum(['16:9','9:16','1:1']).optional(), quality:z.enum(['720p','1080p']).optional(), background:color.optional().describe('Canvas background, including the color revealed by fades. Defaults to #26252e.'),
       media:z.array(media).max(1000).optional(),
-      frame_sequence:z.object({frames:z.array(file).min(1).max(1000),fps:z.number().int().min(1).max(60),duration:z.number().min(.001).max(600),start:seconds.optional(),track:z.number().int().min(1).max(100).optional(),fit:z.enum(['contain','cover']).optional(),scale:animation.scale,x:animation.x,y:animation.y}).optional().describe('Cycle still-image frames at fps for exactly duration seconds; each distinct file is uploaded once.'),
+      frame_sequence:z.object({frames:z.array(file).min(1).max(1000).optional(),frame_asset_ids:z.array(z.string().uuid()).min(1).max(1000).optional(),fps:z.number().int().min(1).max(60),duration:z.number().min(.001).max(600),start:seconds.optional(),track:z.number().int().min(1).max(100).optional(),fit:z.enum(['contain','cover']).optional(),scale:animation.scale,x:animation.x,y:animation.y}).optional().describe('Cycle still images for exactly duration seconds. Supply either frames (local paths) or frame_asset_ids (existing Cliproom assets).'),
       titles:z.array(z.object({ text:z.string().min(1).max(240), start:seconds, end:seconds, x:z.number().min(0).max(100).optional(), y:z.number().min(0).max(100).optional(), size:z.number().min(2).max(30).optional(), color:color.optional() })).max(100).optional(),
       render_mode:z.enum(['realtime','offline']).optional().describe('Offline exports WebM without waiting for playback; requires normal-speed video/audio, supported codecs, and a project up to 10 minutes. Defaults to realtime.'),
-      save_project:z.boolean().optional()
+      save_project:z.boolean().optional(),preview_times:previewTimes
     }), outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
-  }, handler(renderVideo));
+  }, handler(renderWithPreview(renderVideo)));
   server.registerTool('cliproom_render_project', {
     title:'Render an existing Cliproom project',
     description:'Call the Cliproom render endpoint with an existing server project ID or a project JSON file in the MCP workspace. Returns a video without driving editor controls. Referenced media must already exist in the Cliproom server library.',
@@ -173,9 +181,9 @@ function buildServer() {
       output:file.describe('New output filename stem, or a filename with the browser-supported video extension.'),
       project_id:z.string().uuid().optional().describe('ID of a saved Cliproom project on this server.'),
       project_path:file.optional().describe('Path to a Cliproom project JSON file containing the state or a saved-project wrapper.'),
-      render_mode:z.enum(['realtime','offline']).optional().describe('Offline exports WebM without waiting for playback; requires normal-speed video/audio, supported codecs, and a project up to 10 minutes. Defaults to realtime.')
+      render_mode:z.enum(['realtime','offline']).optional().describe('Offline exports WebM without waiting for playback; requires normal-speed video/audio, supported codecs, and a project up to 10 minutes. Defaults to realtime.'),preview_times:previewTimes
     }), outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
-  }, handler(renderSavedProject));
+  }, handler(renderWithPreview(renderSavedProject)));
   registerWorkspace(server,{handler,file,artifact});
   return server;
 }

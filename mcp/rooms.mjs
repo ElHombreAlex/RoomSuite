@@ -135,6 +135,11 @@ async function uploadCliproomMedia(page, file) {
     });
   } finally { await handle.evaluate(input => input.remove()).catch(() => {}); await handle.dispose(); }
 }
+async function reuseCliproomMedia(page,id){return page.evaluate(async id=>{
+  const response=await fetch('/api/assets/'+id+'/metadata');if(!response.ok)throw new Error('Cliproom asset not found: '+id);const meta=await response.json(),kind=meta.type.startsWith('image/')?'image':meta.type.startsWith('audio/')?'audio':meta.type.startsWith('video/')?'video':null;if(!kind)throw new Error('Unsupported Cliproom asset: '+id);
+  const media=kind==='image'?new Image():document.createElement(kind);await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Reading asset metadata timed out.')),20000),loaded=()=>{clearTimeout(timer);resolve();},failed=()=>{clearTimeout(timer);reject(new Error('The browser cannot decode asset '+id+'.'));};if(kind==='image')media.onload=loaded;else{media.preload='metadata';media.onloadedmetadata=loaded;}media.onerror=failed;media.src='/api/assets/'+id;});
+  return {...meta,kind,duration:kind==='image'?5:await readableDuration(media),width:kind==='image'?media.naturalWidth:media.videoWidth||0,height:kind==='image'?media.naturalHeight:media.videoHeight||0};
+},id);}
 async function preflightVideoOutput(requested, mode) {
   const extension = path.extname(requested).toLowerCase();
   if (mode === 'offline') {
@@ -290,27 +295,29 @@ export async function renderVideo(args, signal, progress) {
   await preflightVideoOutput(args.output, args.render_mode);
   const entries=[...(args.media||[])],sequence=args.frame_sequence;
   if(!entries.length&&!sequence)throw new Error('Provide media or a frame_sequence.');
-  if(sequence){const count=Math.ceil(sequence.duration*sequence.fps-1e-9),start=sequence.start||0;if(count+entries.length>10000)throw new Error('Frame sequence exceeds the 10,000-clip project limit.');
-    for(let i=0;i<count;i++){const at=start+i/sequence.fps,end=Math.min(start+sequence.duration,start+(i+1)/sequence.fps);entries.push({input:sequence.frames[i%sequence.frames.length],start:at,duration:end-at,track:sequence.track,fit:sequence.fit,scale:sequence.scale,x:sequence.x,y:sequence.y,_frame:true});}}
+  if(sequence){if(!!sequence.frames===!!sequence.frame_asset_ids)throw new Error('Provide either frame_sequence.frames or frame_asset_ids.');const frames=sequence.frames||sequence.frame_asset_ids,count=Math.ceil(sequence.duration*sequence.fps-1e-9),start=sequence.start||0;if(count+entries.length>10000)throw new Error('Frame sequence exceeds the 10,000-clip project limit.');
+    for(let i=0;i<count;i++){const at=start+i/sequence.fps,end=Math.min(start+sequence.duration,start+(i+1)/sequence.fps);entries.push({...(sequence.frames?{input:frames[i%frames.length]}:{asset_id:frames[i%frames.length]}),start:at,duration:end-at,track:sequence.track,fit:sequence.fit,scale:sequence.scale,x:sequence.x,y:sequence.y,_frame:true});}}
+  for(const entry of entries)if(!!entry.input===!!entry.asset_id)throw new Error('Each media item needs exactly one input or asset_id.');
   for (const entry of entries) for (const frame of entry.keyframes || []) {
     if (['time','source_time','timeline_time'].filter(key => frame[key] !== undefined).length !== 1) throw new Error('Each keyframe must specify exactly one of timeline_time, source_time, or time.');
     if (!Object.keys(frame).some(key => !['time','source_time','timeline_time'].includes(key))) throw new Error('A keyframe must set at least one property.');
   }
-  const requested=[...new Set(entries.map(entry=>entry.input))],resolved=await Promise.all(requested.map(inputPath)),fileFor=new Map(requested.map((name,i)=>[name,resolved[i]])),files=[...new Set(resolved)];
-  const imported = await withRoom('/cliproom/', 'Cliproom', signal, async page => {
-    const imported = [];
+  const requested=[...new Set(entries.map(entry=>entry.input).filter(Boolean))],resolved=await Promise.all(requested.map(inputPath)),fileFor=new Map(requested.map((name,i)=>[name,resolved[i]])),files=[...new Set(resolved)],existingIds=[...new Set(entries.map(entry=>entry.asset_id).filter(Boolean))];
+  const {imported,existing} = await withRoom('/cliproom/', 'Cliproom', signal, async page => {
+    const imported = [],existing=[];
+    for(const id of existingIds)existing.push(await reuseCliproomMedia(page,id));
     for (let i = 0; i < files.length; i++) {
       try { imported.push(await uploadCliproomMedia(page, files[i])); }
       catch (error) { throw new Error('Could not import ' + files[i] + ': ' + error.message); }
     }
-    return imported;
+    return {imported,existing};
   });
-  const uid = () => crypto.randomUUID(), state = T.empty(uid), cursors = new Map(), assetFor=new Map(files.map((file,i)=>[file,imported[i]]));
-  state.assets = imported;
+  const uid = () => crypto.randomUUID(), state = T.empty(uid), cursors = new Map(), assetFor=new Map(files.map((file,i)=>[file,imported[i]])),existingFor=new Map(existing.map(asset=>[asset.id,asset]));
+  state.assets = [...imported,...existing];
   state.name = args.name || 'RoomSuite agent video'; state.aspect = args.aspect || '16:9'; state.quality = args.quality || '720p';if(args.background)state.background=args.background;
   entries.forEach(entry => {
-    const asset = assetFor.get(fileFor.get(entry.input)), isAudio = asset.kind === 'audio';
-    if(entry._frame&&asset.kind!=='image')throw new Error('Frame sequences require still-image files: '+entry.input);
+    const asset = entry.asset_id?existingFor.get(entry.asset_id):assetFor.get(fileFor.get(entry.input)), isAudio = asset.kind === 'audio';
+    if(entry._frame&&asset.kind!=='image')throw new Error('Frame sequences require still-image files or assets: '+(entry.input||entry.asset_id));
     const clips = isAudio ? state.audioClips : state.clips;
     const item = isAudio ? { id:uid(), assetId:asset.id, rate:1, volume:.7, fadeIn:0, fadeOut:0 } :
       { id:uid(), assetId:asset.id, rate:1, volume:1, fit:'contain', opacity:1, scale:1, x:50, y:50, brightness:100, contrast:100, saturation:100, rotation:0, flipX:false, fadeIn:0, fadeOut:0 };
@@ -364,7 +371,7 @@ export async function renderVideo(args, signal, progress) {
   const result = await renderProjectRequest(body, args.output, signal);
   const warnings = entries.some(entry => entry.keyframes?.some(frame => frame.time !== undefined)) ?
     ['Legacy keyframe time means source-media seconds, not timeline seconds. Prefer timeline_time or source_time.'] : [];
-  return { ...result, operation:'render_video', duration_seconds:assembled.duration, project, warnings, note:'Imported media remains in the Cliproom server library.' };
+  return { ...result, operation:'render_video', duration_seconds:assembled.duration, project, warnings, assets:[...requested.map(input=>({input,asset_id:assetFor.get(fileFor.get(input)).id})),...existing.map(asset=>({asset_id:asset.id,reused:true}))], note:'Imported media remains in the Cliproom server library.' };
 }
 
 export async function renderSavedProject(args, signal) {
