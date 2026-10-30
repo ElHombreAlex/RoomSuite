@@ -178,9 +178,30 @@ export async function editImage(args, signal) {
       await page.mouse.move(x(c.x), y(c.y)); await page.mouse.down(); await page.mouse.move(x(c.x + c.width), y(c.y + c.height), { steps:8 }); await page.mouse.up();
       await page.locator('#applyCropBtn').click();
     }
+    if (args.rotation !== undefined) await setField(page, '[data-prop="rotation"]', args.rotation);
     await page.locator('#exportBtn').click(); await page.locator('#exportFormat').selectOption(mimeByExt[ext]);
     const result = await downloadTo(page, '#downloadBtn', out, mimeByExt[ext]);
     return { ...result, room:'PixelRoom', operation:'edit_image' };
+  });
+}
+
+export async function inpaintImage(args,signal){
+  const input=await inputPath(args.input),mask=await inputPath(args.mask),out=await outputPath(args.output,['.png']);
+  for(const file of [input,mask])if((await fs.stat(file)).size>20*1024*1024)throw new Error('Images and masks must be 20 MB or smaller.');
+  return withRoom('/pixelroom/','Pixelroom',signal,async page=>{
+    await page.evaluate(()=>{for(const id of ['inpaintInput','inpaintMask']){const input=document.createElement('input');input.type='file';input.id=id;document.body.append(input);}});
+    await page.locator('#inpaintInput').setInputFiles(input);await page.locator('#inpaintMask').setInputFiles(mask);
+    await page.evaluate(async()=>{
+      const [source,mask]=await Promise.all(['inpaintInput','inpaintMask'].map(async id=>{const file=document.getElementById(id).files[0];try{return await createImageBitmap(file);}catch{throw new Error('The input and mask must be supported image files.');}}));
+      if(source.width!==mask.width||source.height!==mask.height)throw new Error('The mask must have the same dimensions as the input image.');
+      if(source.width*source.height>16000000)throw new Error('The image must be 16 megapixels or smaller for cleanup.');
+      const canvas=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c;},src=canvas(source.width,source.height),selection=canvas(source.width,source.height),sc=src.getContext('2d'),mc=selection.getContext('2d',{willReadFrequently:true});sc.drawImage(source,0,0);mc.drawImage(mask,0,0);source.close();mask.close();
+      const pixels=mc.getImageData(0,0,selection.width,selection.height);let any=false;for(let i=0;i<pixels.data.length;i+=4){const d=pixels.data,level=Math.round((d[i]+d[i+1]+d[i+2])/3*d[i+3]/255);d[i]=d[i+1]=d[i+2]=255;d[i+3]=level;if(level>32)any=true;}if(!any)throw new Error('The mask contains no selected pixels.');mc.putImageData(pixels,0,0);window.roomsuiteInpaint={src,selection};
+    });
+    const [download]=await Promise.all([page.waitForEvent('download',{timeout:timeoutMs}),page.evaluate(async options=>{
+      const {src,selection}=window.roomsuiteInpaint,result=await PixelVision.inpaint(src,selection,{x:0,y:0,w:src.width,h:src.height},()=>{},options),blob=await new Promise((resolve,reject)=>result.toBlob(value=>value?resolve(value):reject(new Error('PNG export failed.')),'image/png'));const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='cleanup.png';link.click();setTimeout(()=>URL.revokeObjectURL(url),30000);
+    },{padding:args.padding??4,feather:args.feather??2})]);
+    const result=await saveDownload(download,out,'image/png');return {...result,room:'PixelRoom',operation:'inpaint'};
   });
 }
 
@@ -215,7 +236,7 @@ export async function editAudio(args, signal) {
 function vectorObject(element) {
   const fillMode = element.fill_mode || (element.type === 'line' || element.type === 'path' ? 'none' : 'solid');
   const defaultWidth = element.type === 'text' || (['rect','ellipse'].includes(element.type) && fillMode !== 'none' && !element.stroke) ? 0 : 2;
-  const item = { type:element.type, fillMode, fill:element.fill || '#a895e9', fill2:element.fill2 || '#f7bcb5', stroke:element.stroke || '#302a3e', strokeWidth:element.stroke_width ?? defaultWidth };
+  const item = { type:element.type, fillMode, fill:element.fill || '#a895e9', fill2:element.fill2 || '#f7bcb5', stroke:element.stroke || '#302a3e', strokeWidth:element.stroke_width ?? defaultWidth, opacity:element.opacity ?? 1 };
   if (element.type === 'path') {
     item.points = element.points.map(p => ({ x:p.x, y:p.y, inX:p.in_x ?? p.x, inY:p.in_y ?? p.y, outX:p.out_x ?? p.x, outY:p.out_y ?? p.y })); item.closed = !!element.closed;
   } else {

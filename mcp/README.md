@@ -96,11 +96,12 @@ The MCP workspace restriction is separate from your agent host's own filesystem 
 | paintroom_list, paintroom_get | List or read saved PaintRoom projects and their editable layers. |
 | paintroom_create, paintroom_edit, paintroom_clone, paintroom_import_project | Create, import, clone or edit artwork, with IDs, file-based elements, Bézier paths and revision checks. Set `include_preview` for an inline image in the same response. |
 | paintroom_preview, paintroom_preview_sheet | Preview one saved project, or compare 2–12 projects in a labeled contact sheet. |
-| paintroom_export | Export a saved project to the MCP workspace as PNG, `.paintroom`, or SVG for artwork without images or eraser strokes. PNG uses a local browser. |
+| paintroom_export | Export a saved project to the MCP workspace as PNG, `.paintroom`, SVG, or editable `.vectorroom`. VectorRoom export rejects unsupported compositing instead of silently flattening. PNG uses a local browser. |
 | paintroom_export_batch | Export a sequence of saved projects as PNGs and a revision-and-hash manifest; byte-identical PNGs reuse a path. |
-| pixelroom_edit | Adjust brightness, contrast or saturation; optionally run local subject removal and crop; export PNG, JPEG or WebP. |
+| pixelroom_edit | Adjust brightness, contrast or saturation; optionally run local subject removal, crop, and rotate; export PNG, JPEG or WebP. Rotation happens after cropping and may extend beyond the existing canvas. |
+| pixelroom_inpaint | Rebuild a selected region with the bundled local model. Supply matching image and mask files (white selects; black or transparent preserves); export a PNG and inspect the result. `padding` and `feather` are source-pixel values. |
 | soundroom_edit | Trim, normalize, change gain, apply fades and export WAV. |
-| vectorroom_create, vectorroom_preview | Create shapes, text and Bézier paths; export SVG, PNG or an editable .vectorroom project, or preview a composition without writing a file. `vectorroom_create` also accepts `include_preview`. |
+| vectorroom_create, vectorroom_preview | Create shapes, text and Bézier paths with optional object opacity; export SVG, PNG or an editable .vectorroom project, or preview a composition without writing a file. `vectorroom_create` also accepts `include_preview`. |
 | captureroom_record_scene | Record a prepared image/text scene as a video. |
 | cliproom_import_media | Upload media to the Cliproom library and return the asset metadata needed in a project. |
 | cliproom_list_projects | List saved projects with IDs and revisions. |
@@ -258,3 +259,5 @@ The integration tests start temporary local RoomSuite servers, use a real MCP cl
 ~~~sh
 ROOMSUITE_MCP_TEST_MODELS=1 npm test --prefix mcp
 ~~~
+
+To also exercise the bundled cleanup model through `pixelroom_inpaint`, set `ROOMSUITE_TEST_CLEANUP_MODEL=1`. That test takes longer because it loads and runs the model locally.

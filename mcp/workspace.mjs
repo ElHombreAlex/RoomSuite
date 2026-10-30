@@ -100,7 +100,7 @@ export async function paintList(args,signal){return json('/api/paint/projects','
 export async function paintExport(args,signal){
   const project=await json('/api/paint/projects/'+args.project_id,'GET',undefined,signal),ext='.'+args.format,out=await outputPath(args.output,[ext]);PaintModel.validate(project.state);
   if(args.format!=='png'){
-    const data=args.format==='svg'?PaintModel.svg(project.state):JSON.stringify(project.state);
+    const data=args.format==='svg'?PaintModel.svg(project.state):JSON.stringify(args.format==='vectorroom'?PaintModel.toVector(project.state):project.state);
     try{await fs.writeFile(out,data,{flag:'wx',mode:0o600});}catch(error){if(error.code==='EEXIST')throw new Error('Output already exists: '+args.output);throw error;}
     return {path:out,bytes:Buffer.byteLength(data),mime_type:args.format==='svg'?'image/svg+xml':'application/json',room:'PaintRoom',operation:'export'};
   }

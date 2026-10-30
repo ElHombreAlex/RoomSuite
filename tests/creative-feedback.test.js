@@ -12,7 +12,8 @@ test('PaintRoom keeps fill-only shapes outline-free in SVG and editable VectorRo
   assert.match(Paint.svg(state),/stroke="none"/);
   const vector=Paint.toVector(state);assert.equal(vector.format,'vectorroom');assert.equal(vector.objects.length,2);
   const shape=vector.objects[1];assert.equal(shape.fill,'#a89472');assert.equal(shape.strokeWidth,0);assert.equal(shape.points.length,4);assert.equal(shape.closed,true);
-  state.layers[0].objects[0].stroke=true;assert.match(Paint.svg(state),/stroke="#765ee8"/);
+  state.layers[0].objects[0].opacity=.4;assert.equal(Paint.toVector(state).objects[1].opacity,.4);
+  state.layers[0].objects[0].stroke=true;assert.match(Paint.svg(state),/stroke="#765ee8"/);assert.throws(()=>Paint.toVector(state),/translucent object/);
   state.layers[0].opacity=.5;assert.throws(()=>Paint.toVector(state),/opaque layers/);
 });
 test('adjacent fractional frame clips cover every frame without changing the intended duration',()=>{

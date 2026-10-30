@@ -21,13 +21,31 @@
     return regions.sort((a,b)=>b.w*b.h-a.w*a.h).slice(0,10);
   }
   function reflected(v,n){if(n<=1)return 0;const period=2*n;let k=((v%period)+period)%period;return k<n?k:period-1-k;}
-  function expandedMask(mask,w,h,radius){const src=mask.getContext('2d',{willReadFrequently:true}).getImageData(0,0,w,h).data,hor=new Uint8Array(w*h),out=new Uint8Array(w*h);for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(src[(y*w+x)*4+3]>32)for(let dx=-radius;dx<=radius;dx++){const xx=x+dx;if(xx>=0&&xx<w)hor[y*w+xx]=1;}for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(hor[y*w+x])for(let dy=-radius;dy<=radius;dy++){const yy=y+dy;if(yy>=0&&yy<h)out[yy*w+x]=1;}return out;}
-  async function inpaint(source,mask,region,progress=()=>{}){
-    const w=source.width,h=source.height,size=512,binary=expandedMask(mask,w,h,Math.max(1,Math.min(3,Math.round(region.h*.012))));let minX=w,minY=h,maxX=-1,maxY=-1;for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(binary[y*w+x]){minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);}if(maxX<minX)throw new Error('Select some letters before previewing the cleanup.');
-    const session=await cleanupSession(progress),side=Math.max(256,(maxX-minX+1)*1.6,(maxY-minY+1)*1.6),left=(minX+maxX)/2-side/2,top=(minY+maxY)/2-side/2,sourceCtx=source.getContext('2d',{willReadFrequently:true}),pixels=sourceCtx.getImageData(0,0,w,h).data,plane=size*size,tensor=new Float32Array(plane*4);
-    for(let y=0;y<size;y++)for(let x=0;x<size;x++){const sx=Math.floor(left+(x+.5)*side/size),sy=Math.floor(top+(y+.5)*side/size),inside=sx>=0&&sy>=0&&sx<w&&sy<h,rx=reflected(sx,w),ry=reflected(sy,h),index=ry*w+rx,masked=inside&&binary[index],p=index*4,t=y*size+x;for(let ch=0;ch<3;ch++)tensor[ch*plane+t]=masked?0:pixels[p+ch]/255;tensor[3*plane+t]=masked?1:0;}
-    progress('Rebuilding the background on this device…');const result=await session.run({[session.inputNames[0]]:new ort.Tensor('float32',tensor,[1,4,size,size])}),output=result[session.outputNames[0]].data,generated=canvas(size,size),gc=generated.getContext('2d'),image=gc.createImageData(size,size);for(let i=0;i<plane;i++){for(let ch=0;ch<3;ch++)image.data[i*4+ch]=Math.round(limit(output[ch*plane+i],0,1)*255);image.data[i*4+3]=255;}gc.putImageData(image,0,0);
-    const expanded=canvas(w,h),ec=expanded.getContext('2d'),em=ec.createImageData(w,h);for(let i=0;i<binary.length;i++){em.data[i*4]=em.data[i*4+1]=em.data[i*4+2]=255;em.data[i*4+3]=binary[i]?255:0;}ec.putImageData(em,0,0);const patch=canvas(w,h),pc=patch.getContext('2d');pc.drawImage(generated,left,top,side,side);pc.globalCompositeOperation='destination-in';pc.drawImage(expanded,0,0);const out=canvas(w,h),oc=out.getContext('2d');oc.drawImage(source,0,0);oc.drawImage(patch,0,0);return out;
+  async function inpaint(source,mask,region,progress=()=>{},options={}){
+    const w=source.width,h=source.height,size=512,src=mask.getContext('2d',{willReadFrequently:true}).getImageData(0,0,w,h).data,raw=new Uint8Array(w*h);
+    for(let i=0;i<raw.length;i++)raw[i]=src[i*4+3]>32?1:0;
+    const padding=limit(Math.round(options.padding??Math.max(2,Math.min(8,(region?.h||50)*.04))),0,24),feather=limit(Math.round(options.feather??2),0,16),binary=PixelCleanup.dilate(raw,w,h,padding);
+    let minX=w,minY=h,maxX=-1,maxY=-1;for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(binary[y*w+x]){minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);}if(maxX<minX)throw new Error('Select some letters before previewing the cleanup.');
+    const alpha=PixelCleanup.feather(binary,w,h,feather),plan=PixelCleanup.plan({minX,minY,maxX,maxY}),{side,tiles}=plan,session=await cleanupSession(progress),sourceCtx=source.getContext('2d',{willReadFrequently:true}),original=sourceCtx.getImageData(0,0,w,h),out=canvas(w,h),oc=out.getContext('2d'),image=oc.createImageData(w,h);image.data.set(original.data);
+    const bw=maxX-minX+1,weights=new Uint16Array(bw*(maxY-minY+1)),plane=size*size;
+    for(let tile=0;tile<tiles.length;tile++){
+      const {left,top}=tiles[tile],tensor=new Float32Array(plane*4);
+      for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+        const sx=Math.floor(left+(x+.5)*side/size),sy=Math.floor(top+(y+.5)*side/size),rx=reflected(sx,w),ry=reflected(sy,h),p=(ry*w+rx)*4,t=y*size+x;
+        // Max-pool the source mask so downscaling a tile cannot lose thin strokes.
+        const x0=Math.max(0,Math.floor(left+x*side/size)),x1=Math.min(w,Math.ceil(left+(x+1)*side/size)),y0=Math.max(0,Math.floor(top+y*side/size)),y1=Math.min(h,Math.ceil(top+(y+1)*side/size));let masked=false;
+        for(let yy=y0;yy<y1&&!masked;yy++)for(let xx=x0;xx<x1;xx++)if(binary[yy*w+xx]){masked=true;break;}
+        for(let ch=0;ch<3;ch++)tensor[ch*plane+t]=masked?0:original.data[p+ch]/255;tensor[3*plane+t]=masked?1:0;
+      }
+      progress(`Rebuilding the background on this device (${tile+1}/${tiles.length})…`);
+      const result=await session.run({[session.inputNames[0]]:new ort.Tensor('float32',tensor,[1,4,size,size])}),values=result[session.outputNames[0]].data,generated=canvas(size,size),gc=generated.getContext('2d'),patch=gc.createImageData(size,size);
+      for(let i=0;i<plane;i++){for(let ch=0;ch<3;ch++)patch.data[i*4+ch]=Math.round(limit(values[ch*plane+i],0,1)*255);patch.data[i*4+3]=255;}gc.putImageData(patch,0,0);
+      const scaled=canvas(side,side),sc=scaled.getContext('2d',{willReadFrequently:true});sc.drawImage(generated,0,0,side,side);const pixels=sc.getImageData(0,0,side,side).data;
+      const x0=Math.max(minX,left,0),x1=Math.min(maxX+1,left+side,w),y0=Math.max(minY,top,0),y1=Math.min(maxY+1,top+side,h);
+      for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){const index=y*w+x;if(!binary[index])continue;const wi=(y-minY)*bw+x-minX,edge=Math.min(x-left+.5,y-top+.5,left+side-x-.5,top+side-y-.5),weight=Math.max(1,Math.round(255*limit(edge/(side*.2),0,1))),total=weights[wi]+weight,p=index*4,q=((y-top)*side+x-left)*4;for(let ch=0;ch<3;ch++)image.data[p+ch]=Math.round((image.data[p+ch]*weights[wi]+pixels[q+ch]*weight)/total);weights[wi]=total;}
+    }
+    for(let y=minY;y<=maxY;y++)for(let x=minX;x<=maxX;x++){const i=y*w+x,p=i*4,blend=alpha[i]/255;if(!binary[i])continue;for(let ch=0;ch<3;ch++)image.data[p+ch]=Math.round(original.data[p+ch]*(1-blend)+image.data[p+ch]*blend);image.data[p+3]=original.data[p+3];}
+    oc.putImageData(image,0,0);return out;
   }
   window.PixelVision={foreground,inpaint,contrastTextRegions};
 })();

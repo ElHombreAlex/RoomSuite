@@ -49,11 +49,12 @@
       const node=(point,inHandle=point,outHandle=point)=>{const p=transform(point),i=transform(inHandle),o=transform(outHandle);return {x:p.x,y:p.y,inX:i.x,inY:i.y,outX:o.x,outY:o.y};};
       for(const item of l.objects){
         if(item.type==='image'||item.erase)throw new Error('VectorRoom transfer supports vector artwork without photos or eraser strokes. Use PNG for this artwork.');
-        if(item.opacity!==1)throw new Error('VectorRoom transfer requires opaque objects. Use PNG for transparent artwork.');
+        if(item.opacity<1&&item.fill&&item.stroke!==false)throw new Error('A translucent object with both fill and outline cannot be transferred faithfully. Use PNG or remove its outline.');
+        if(item.opacity<1&&item.type==='stroke'&&item.points.length>5000)throw new Error('A long translucent brush stroke cannot be transferred faithfully. Use PNG for this artwork.');
         const width=(item.stroke===false?0:item.width*l.scale*fit);if(width>100)throw new Error('A stroke is too wide for VectorRoom. Reduce the stroke or layer scale.');
         const radius=item.stroke===false?0:item.width/2,points=item.type==='path'?item.points.flatMap(p=>[p,{x:p.inX,y:p.inY},{x:p.outX,y:p.outY}]):item.type==='stroke'?item.points:item.type==='line'?[{x:item.x,y:item.y},{x:item.x2,y:item.y2}]:[{x:item.x,y:item.y},{x:item.x2,y:item.y},{x:item.x2,y:item.y2},{x:item.x,y:item.y2}];
         for(const p of points){const q=transform(p),r=radius*l.scale*fit;if(p.x-radius<0||p.y-radius<0||p.x+radius>project.width||p.y+radius>project.height||q.x-r<ox||q.y-r<oy||q.x+r>ox+project.width*fit||q.y+r>oy+project.height*fit)throw new Error('Artwork clipped by the canvas must be flattened for VectorRoom.');}
-        const style=base(item.fill,item.color,width),add=(points,closed)=>output.push({type:'path',points,closed,...style});
+        const style={...base(item.fill,item.color,width),opacity:item.opacity},add=(points,closed)=>output.push({type:'path',points,closed,...style});
         if(item.type==='stroke'){
           const points=item.points;if(points.length===1){const p=points[0];add([node(p),node({x:p.x+.001,y:p.y})],false);}
           else for(let i=0;i<points.length-1;i+=4999)add(points.slice(i,Math.min(points.length,i+5000)).map(p=>node(p)),false);

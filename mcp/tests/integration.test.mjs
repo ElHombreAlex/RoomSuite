@@ -47,7 +47,7 @@ after(async () => {
 });
 test('MCP discovers tools and advertises the workspace', async () => {
   const tools = (await client.listTools()).tools.map(tool => tool.name);
-  for (const name of ['roomsuite_info','roomsuite_list_files','roomsuite_media_info','pixelroom_edit','soundroom_edit','vectorroom_create','captureroom_record_scene','cliproom_import_media','cliproom_list_projects','cliproom_get_project','cliproom_save_project','cliproom_render','cliproom_render_project']) assert.ok(tools.includes(name),name);
+  for (const name of ['roomsuite_info','roomsuite_list_files','roomsuite_media_info','pixelroom_edit','pixelroom_inpaint','soundroom_edit','vectorroom_create','captureroom_record_scene','cliproom_import_media','cliproom_list_projects','cliproom_get_project','cliproom_save_project','cliproom_render','cliproom_render_project']) assert.ok(tools.includes(name),name);
   const info = await call('roomsuite_info'); assert.equal(info.workspace, await fs.realpath(work)); assert.equal(info.server_url,base);
 });
 test('VectorRoom creates a usable PNG from structured shapes and text', async () => {
@@ -57,11 +57,24 @@ test('VectorRoom creates a usable PNG from structured shapes and text', async ()
     { type:'path', points:[{x:100,y:450,out_x:250,out_y:300},{x:600,y:500,in_x:500,in_y:650}], stroke:'#221122', stroke_width:5 }
   ] });
   const png = await fs.readFile(result.path); assert.equal(png.subarray(1,4).toString(),'PNG'); assert.equal(png.readUInt32BE(16),1000); assert.equal(png.readUInt32BE(20),700);
+  const editable=await call('vectorroom_create',{output:'opacity.vectorroom',elements:[{type:'rect',x:10,y:10,width:100,height:100,opacity:.35}]});assert.equal(JSON.parse(await fs.readFile(editable.path,'utf8')).objects[0].opacity,.35);
 });
 test('PixelRoom edits and crops an image through the editor', async () => {
   const result = await call('pixelroom_edit', { input:'art.png', output:'cropped.png', brightness:15, crop:{x:100,y:100,width:400,height:300} });
   const png = await fs.readFile(result.path); const width=png.readUInt32BE(16), height=png.readUInt32BE(20);
   assert.ok(Math.abs(width-400) <= 2 && Math.abs(height-300) <= 2, 'crop dimensions: ' + width + 'x' + height);
+  const rotated=await call('pixelroom_edit', { input:'art.png', output:'rotated.png', brightness:15, crop:{x:100,y:100,width:400,height:300},rotation:32 });
+  const turned=await fs.readFile(rotated.path);assert.equal(turned.readUInt32BE(16),width);assert.equal(turned.readUInt32BE(20),height);assert.notDeepEqual(turned,png);
+});
+test('PixelRoom rejects a cleanup mask with different dimensions',async()=>{
+  const browser=await chromium.launch({headless:true,...(process.env.ROOMSUITE_BROWSER_PATH?{executablePath:process.env.ROOMSUITE_BROWSER_PATH}:{})});let tiny;try{const page=await browser.newPage();tiny=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=c.height=1;return c.toDataURL().split(',')[1];});}finally{await browser.close();}await fs.writeFile(path.join(work,'tiny.png'),Buffer.from(tiny,'base64'));
+  await assert.rejects(call('pixelroom_inpaint',{input:'sample.jpg',mask:'tiny.png',output:'invalid.png'}),/same dimensions/);
+});
+test('PixelRoom inpaints an agent mask with the bundled model',{skip:process.env.ROOMSUITE_TEST_CLEANUP_MODEL!=='1'},async()=>{
+  const browser=await chromium.launch({headless:true,...(process.env.ROOMSUITE_BROWSER_PATH?{executablePath:process.env.ROOMSUITE_BROWSER_PATH}:{})});
+  try{const page=await browser.newPage();await page.goto(base+'/pixelroom/');const files=await page.evaluate(()=>{const s=document.createElement('canvas'),m=document.createElement('canvas');s.width=m.width=256;s.height=m.height=128;const c=s.getContext('2d'),mctx=m.getContext('2d');c.fillStyle='#b4a080';c.fillRect(0,0,256,128);c.fillStyle='#222';c.fillRect(100,54,30,20);mctx.fillStyle='#fff';mctx.fillRect(100,54,30,20);return [s.toDataURL().split(',')[1],m.toDataURL().split(',')[1]];});await fs.writeFile(path.join(work,'cleanup-input.png'),Buffer.from(files[0],'base64'));await fs.writeFile(path.join(work,'cleanup-mask.png'),Buffer.from(files[1],'base64'));
+    const result=await call('pixelroom_inpaint',{input:'cleanup-input.png',mask:'cleanup-mask.png',output:'cleaned.png'});await page.evaluate(()=>{const input=document.createElement('input');input.type='file';input.id='result';document.body.append(input);});await page.locator('#result').setInputFiles(result.path);const pixel=await page.evaluate(async()=>{const bmp=await createImageBitmap(document.querySelector('#result').files[0]),c=document.createElement('canvas');c.width=bmp.width;c.height=bmp.height;const x=c.getContext('2d');x.drawImage(bmp,0,0);return [...x.getImageData(110,60,1,1).data];});assert.ok(pixel[0]>80);assert.equal(pixel[3],255);
+  }finally{await browser.close();}
 });
 test('workspace listing and media inspection report useful metadata', async () => {
   const first = await call('roomsuite_list_files',{ limit:1 });

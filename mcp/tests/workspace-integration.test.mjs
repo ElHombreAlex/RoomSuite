@@ -30,6 +30,9 @@ test('agent workflow moves shared media through PaintRoom, Cliproom and NotesRoo
   const edited=await call('paintroom_edit',{project_id:created.project_id,base_revision:1,elements:[{type:'stroke',points:[{x:40,y:40},{x:200,y:80}],color:'#00ff00',width:8}]});assert.equal(edited.revision,2);
   await assert.rejects(call('paintroom_edit',{project_id:created.project_id,base_revision:1}),/changed/);
   const art=await call('paintroom_export',{project_id:created.project_id,format:'png',output:'paint.png'});const png=await fs.readFile(art.path);assert.equal(png.subarray(1,4).toString(),'PNG');assert.equal(png.readUInt32BE(16),640);
+  await assert.rejects(call('paintroom_export',{project_id:created.project_id,format:'vectorroom',output:'unsupported.vectorroom'}),/photos/);
+  const vectors=await call('paintroom_create',{name:'Editable vector',width:640,height:480,transparent:true,elements:[{type:'rect',x:20,y:20,x2:180,y2:100,fill:'#ff0000',opacity:.4}]});
+  const vector=await call('paintroom_export',{project_id:vectors.project_id,format:'vectorroom',output:'editable.vectorroom'});const doc=JSON.parse(await fs.readFile(vector.path,'utf8'));assert.equal(doc.format,'vectorroom');assert.equal(doc.objects[0].opacity,.4);
   await call('roomsuite_shared_upload',{input:'paint.png',path:'Projects/paint.png'});await call('roomsuite_shared_download',{path:'Projects/paint.png',output:'copy.png'});
   const video=await call('cliproom_render',{output:'variation',render_mode:'offline',media:[{input:'copy.png',duration:.6,keyframes:[{timeline_time:0,x:25},{timeline_time:.6,x:75}]}]});assert.ok(video.bytes>1000);
   const note=await call('notesroom_create',{title:'Launch',folder:'Work/Projects',tags:['launch'],body:'Artwork: '+created.url+'\nVideo: '+video.path});assert.ok(note.url.includes('/notesroom/?note='));

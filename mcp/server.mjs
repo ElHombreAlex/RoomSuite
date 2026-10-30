@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import * as z from 'zod/v4';
 import { workspace, listFiles } from './files.mjs';
-import { serverUrl, editImage, editAudio, createVector, previewVector, recordScene, renderVideo, renderSavedProject, inspectMedia, importCliproomMedia } from './rooms.mjs';
+import { serverUrl, editImage, inpaintImage, editAudio, createVector, previewVector, recordScene, renderVideo, renderSavedProject, inspectMedia, importCliproomMedia } from './rooms.mjs';
 import { listProjects, getProject, saveProject } from './projects.mjs';
 import { registerWorkspace } from './register-workspace.mjs';
 import { imageContent } from './preview.mjs';
@@ -16,7 +16,7 @@ const previewTimes=z.array(seconds).min(1).max(12).optional().describe('Optional
 const captureBox=z.object({x:z.number().min(-3000).max(3000),y:z.number().min(-3000).max(3000),width:z.number().min(1).max(3000),height:z.number().min(1).max(3000)});
 const shapeStyle = {
   fill_mode:z.enum(['solid','gradient','none']).optional(), fill:color.optional(), fill2:color.optional(),
-  stroke:color.optional(), stroke_width:z.number().min(0).max(100).optional()
+  stroke:color.optional(), stroke_width:z.number().min(0).max(100).optional(), opacity:z.number().min(0).max(1).optional()
 };
 const vectorElement = z.discriminatedUnion('type', [
   z.object({ type:z.literal('rect'), x:coord, y:coord, width:z.number().positive().max(100000), height:z.number().positive().max(100000), ...shapeStyle }),
@@ -76,7 +76,7 @@ function buildServer() {
     annotations:{ readOnlyHint:true, destructiveHint:false, openWorldHint:false }
   }, handler(async () => ({
     workspace:await workspace(), server_url:serverUrl(),
-    rooms:['roomsuite_list_files','roomsuite_media_info','roomsuite_preview_image','roomsuite_preview_video','roomsuite_write_begin','roomsuite_write_append','roomsuite_write_finish','roomsuite_write_abort','roomsuite_shared_list','roomsuite_shared_search','roomsuite_shared_upload','roomsuite_shared_download','roomsuite_shared_mkdir','roomsuite_shared_move','roomsuite_shared_delete','notesroom_list','notesroom_get','notesroom_create','notesroom_update','notesroom_delete','notesroom_folders','notesroom_delete_folder','paintroom_list','paintroom_get','paintroom_create','paintroom_import_project','paintroom_clone','paintroom_edit','paintroom_preview','paintroom_preview_sheet','paintroom_export','paintroom_export_batch','pixelroom_edit','soundroom_edit','vectorroom_create','vectorroom_preview','captureroom_record_scene','cliproom_import_media','cliproom_list_projects','cliproom_get_project','cliproom_save_project','cliproom_render','cliproom_render_project'],
+    rooms:['roomsuite_list_files','roomsuite_media_info','roomsuite_preview_image','roomsuite_preview_video','roomsuite_write_begin','roomsuite_write_append','roomsuite_write_finish','roomsuite_write_abort','roomsuite_shared_list','roomsuite_shared_search','roomsuite_shared_upload','roomsuite_shared_download','roomsuite_shared_mkdir','roomsuite_shared_move','roomsuite_shared_delete','notesroom_list','notesroom_get','notesroom_create','notesroom_update','notesroom_delete','notesroom_folders','notesroom_delete_folder','paintroom_list','paintroom_get','paintroom_create','paintroom_import_project','paintroom_clone','paintroom_edit','paintroom_preview','paintroom_preview_sheet','paintroom_export','paintroom_export_batch','pixelroom_edit','pixelroom_inpaint','soundroom_edit','vectorroom_create','vectorroom_preview','captureroom_record_scene','cliproom_import_media','cliproom_list_projects','cliproom_get_project','cliproom_save_project','cliproom_render','cliproom_render_project'],
     notes:['Input and output files must be inside the configured MCP workspace; existing output files are never overwritten.', 'Editor-based tools use isolated headless browser sessions.', 'Cliproom imports media into the server library; it remains there after the call.', 'Updating a saved Cliproom project requires its current revision.', 'CaptureRoom live screen, camera and microphone access require an interactive user and are not exposed by this MCP server.']
   })));
   server.registerTool('roomsuite_list_files', {
@@ -125,14 +125,20 @@ function buildServer() {
   }, handler(saveProject));
   server.registerTool('pixelroom_edit', {
     title:'Edit an image with PixelRoom',
-    description:'Open a local image in PixelRoom, optionally adjust brightness/contrast/saturation, remove the background with the local subject model, and crop; export PNG, JPEG, or WebP. Background selection is approximate and may need review.',
+    description:'Open a local image in PixelRoom, optionally adjust brightness/contrast/saturation, remove the background with the local subject model, crop and rotate; export PNG, JPEG, or WebP. Rotation is applied after the crop within the existing canvas, so corners may be clipped. Background selection is approximate and may need review.',
     inputSchema:z.object({
       input:file, output:file.describe('New output path ending in .png, .jpg, .jpeg, or .webp.'),
       brightness:z.number().int().min(-100).max(100).optional(), contrast:z.number().int().min(-100).max(100).optional(), saturation:z.number().int().min(-100).max(100).optional(),
       crop:z.object({ x:z.number().int().min(0), y:z.number().int().min(0), width:z.number().int().positive(), height:z.number().int().positive() }).optional().describe('Crop in original image pixels.'),
-      remove_background:z.boolean().optional()
+      remove_background:z.boolean().optional(), rotation:z.number().finite().min(-360).max(360).optional().describe('Clockwise degrees, applied after cropping around the image layer center.')
     }), outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(editImage));
+  server.registerTool('pixelroom_inpaint', {
+    title:'Rebuild an image background from a mask',
+    description:'Use PixelRoom’s local cleanup model to replace marked pixels, such as text. Input and mask must have identical dimensions; white mask pixels select areas to rebuild, black or transparent pixels preserve them. Output is PNG. Results are approximate; inspect the output. Long selections run in overlapping sections.',
+    inputSchema:z.object({input:file,mask:file,output:file.describe('New .png output path.'),padding:z.number().int().min(0).max(24).optional().describe('Expand the mask by this many source pixels; default 4.'),feather:z.number().int().min(0).max(16).optional().describe('Blend the inside edge of the expanded mask; default 2 pixels.')}),
+    outputSchema:artifact, annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false}
+  },handler(inpaintImage));
   server.registerTool('soundroom_edit', {
     title:'Edit audio with SoundRoom',
     description:'Open audio, optionally trim, normalize to a peak with headroom, adjust gain or fades, and export a WAV. Default normalization target is -3 dBFS. If gain_percent is supplied, it replaces the normalized gain.',
