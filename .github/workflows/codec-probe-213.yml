@@ -1,0 +1,67 @@
+name: Codec probe 2.1.3
+
+on:
+  push:
+    branches: ['codex/roomsuite-213-codec-probe']
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --prefix mcp
+      - name: Install Chromium on Linux
+        if: runner.os == 'Linux'
+        run: node mcp/node_modules/playwright/cli.js install chromium --only-shell --with-deps
+      - name: Install Chromium on Windows
+        if: runner.os == 'Windows'
+        run: node mcp/node_modules/playwright/cli.js install chromium --only-shell
+      - name: Probe video and audio encoders
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import http from 'node:http';
+          import {chromium} from './mcp/node_modules/playwright/index.mjs';
+          const server=http.createServer((req,res)=>res.end('<html></html>'));
+          await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+          const browser=await chromium.launch({headless:true,args:['--autoplay-policy=no-user-gesture-required']});
+          try {
+            const page=await browser.newPage();
+            await page.goto('http://127.0.0.1:'+server.address().port+'/');
+            const result=await page.evaluate(async()=>{
+              const types=['video/mp4;codecs=avc1.42E01E','video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4;codecs=avc1.42E01E,opus','video/mp4','audio/webm;codecs=opus'];
+              const supports=Object.fromEntries(types.map(type=>[type,MediaRecorder.isTypeSupported(type)]));
+              const webCodecs={};
+              for(const [name,ctor,config] of [['h264',globalThis.VideoEncoder,{codec:'avc1.42001f',width:640,height:480,bitrate:2000000,framerate:30}],['aac',globalThis.AudioEncoder,{codec:'mp4a.40.2',numberOfChannels:2,sampleRate:48000,bitrate:128000}]]){
+                try{webCodecs[name]=ctor? (await ctor.isConfigSupported(config)).supported : false}catch(error){webCodecs[name]=error.message}
+              }
+              async function record(mime,audio){
+                if(!MediaRecorder.isTypeSupported(mime))return {supported:false};
+                const canvas=document.createElement('canvas');canvas.width=640;canvas.height=480;
+                const context=canvas.getContext('2d');context.fillStyle='#c03020';context.fillRect(0,0,640,480);
+                const stream=canvas.captureStream(30);let audioContext,oscillator;
+                if(audio){audioContext=new AudioContext();const destination=audioContext.createMediaStreamDestination();oscillator=audioContext.createOscillator();oscillator.connect(destination);oscillator.start();stream.addTrack(destination.stream.getAudioTracks()[0]);}
+                try{
+                  const recorder=new MediaRecorder(stream,{mimeType:mime}),parts=[];
+                  recorder.ondataavailable=e=>parts.push(e.data);
+                  const stopped=new Promise((resolve,reject)=>{recorder.onstop=resolve;recorder.onerror=e=>reject(new Error(e.error?.message||'recording failed'));});
+                  recorder.start();await new Promise(resolve=>setTimeout(resolve,750));recorder.stop();await stopped;
+                  const buffer=new Uint8Array(await new Blob(parts).arrayBuffer()),str=new TextDecoder('latin1').decode(buffer);
+                  return {supported:true,bytes:buffer.length,avc1:str.includes('avc1'),mp4a:str.includes('mp4a'),mime:recorder.mimeType};
+                }catch(error){return {supported:true,error:error.message}}finally{stream.getTracks().forEach(t=>t.stop());oscillator?.stop();if(audioContext)await audioContext.close();}
+              }
+              return {supports,webCodecs,silent:await record(types[0],false),audible:await record(types[1],true),opusMp4:await record(types[2],true)};
+            });
+            console.log('CODEC_PROBE '+JSON.stringify(result));
+          } finally {await browser.close();server.close();}
+          NODE
