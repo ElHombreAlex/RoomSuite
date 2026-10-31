@@ -135,17 +135,16 @@ async function renderProject(project, { port, suiteMode, signal, mode = 'realtim
           renderAt:(time, frames) => { currentTime = time; renderFrame(frames); } });
       }, project);
     } else {
-      const selected = await page.evaluate(preferred => formatSupport(preferred), format);
+      const selected = await page.evaluate(({state,preferred}) => {setState(state,uid(),0);return formatSupport(preferred);}, {state:project,preferred:format});
       if (!selected) throw Object.assign(new Error(format === 'mp4' ? 'MP4/H.264 with AAC is unavailable in the rendering browser. Configure a browser with those encoders or request WebM.' : 'The requested video format is unavailable in the rendering browser.'), {status:422});
       extension = selected.extension;
-      const started = await page.evaluate(async ({state,preferred}) => {
-        setState(state, uid(), 0);
+      const started = await page.evaluate(async ({preferred}) => {
         await exportVideo(preferred);
         return { active:recording || exportPreparing, message:document.querySelector('#toast').textContent || document.querySelector('#exportStatus').textContent };
       }, {state:project,preferred:format});
       if (!started.active) throw new Error(started.message || 'Could not start the Cliproom render.');
     }
-    const download = await downloadPromise;
+    const download = mode === 'realtime' ? await Promise.race([downloadPromise,page.waitForFunction(()=>exportFailure,null,{timeout}).then(async value=>{throw new Error(await value.jsonValue());})]) : await downloadPromise;
     const failure = await download.failure(); if (failure) throw new Error('Render download failed: ' + failure);
     dir = await fs.mkdtemp(path.join(temporaryRoot, 'roomsuite-render-'));
     const file = path.join(dir, 'cliproom.' + extension);

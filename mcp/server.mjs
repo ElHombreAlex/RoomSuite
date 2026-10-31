@@ -25,7 +25,7 @@ const vectorElement = z.discriminatedUnion('type', [
   z.object({ type:z.literal('rect'), x:coord, y:coord, width:z.number().positive().max(100000), height:z.number().positive().max(100000), ...shapeStyle }),
   z.object({ type:z.literal('ellipse'), x:coord, y:coord, width:z.number().positive().max(100000), height:z.number().positive().max(100000), ...shapeStyle }),
   z.object({ type:z.literal('line'), x:coord, y:coord, x2:coord, y2:coord, ...shapeStyle }),
-  z.object({ type:z.literal('text'), x:coord, y:coord, text:z.string().max(500), font_size:z.number().min(8).max(400).optional(), font:z.enum(['sans-serif','serif','monospace']).optional(), ...shapeStyle }),
+  z.object({ type:z.literal('text'), x:coord, y:coord, text:z.string().max(500), font_size:z.number().min(8).max(400).optional(), font:z.enum(['sans-serif','serif','monospace','Arial','Georgia','Verdana','Times New Roman','Trebuchet MS','Courier New']).optional(), font_weight:z.enum(['normal','bold']).optional(),font_style:z.enum(['normal','italic']).optional(),text_align:z.enum(['left','center','right']).optional(),line_height:z.number().min(.8).max(3).optional(),letter_spacing:z.number().min(-5).max(30).optional(), ...shapeStyle }),
   z.object({ type:z.literal('path'), points:z.array(z.object({ x:coord, y:coord, in_x:coord.optional(), in_y:coord.optional(), out_x:coord.optional(), out_y:coord.optional() })).min(2).max(5000), closed:z.boolean().optional(), ...shapeStyle })
 ]);
 const artifact = z.object({ path:z.string(), bytes:z.number(), mime_type:z.string(), room:z.string(), operation:z.string() }).passthrough();
@@ -74,11 +74,12 @@ function buildServer() {
   const knownGroups=['shared','notesroom','paintroom','pixelroom','soundroom','vectorroom','captureroom','cliproom','docsuite','gridsuite','decksuite','plansuite'];
   const configured=(process.env.ROOMSUITE_MCP_GROUPS||'').trim(),groups=configured?new Set(configured.toLowerCase().split(',').map(value=>value.trim()).filter(Boolean)):null;
   if(groups&&(!groups.size||[...groups].some(group=>!knownGroups.includes(group))))throw new Error('ROOMSUITE_MCP_GROUPS must be a comma-separated list of: '+knownGroups.join(', '));
-  const mode=(process.env.ROOMSUITE_MCP_MODE||'full').trim().toLowerCase();
-  if(!['full','compact'].includes(mode))throw new Error('ROOMSUITE_MCP_MODE must be full or compact.');
+  const mode=(process.env.ROOMSUITE_MCP_MODE||'standard').trim().toLowerCase();
+  if(!['standard','full','compact'].includes(mode))throw new Error('ROOMSUITE_MCP_MODE must be standard, full or compact.');
   const suites=['docsuite','gridsuite','decksuite','plansuite'],always=new Set(['roomsuite_info','roomsuite_check_deployment','roomsuite_discover_suites']);
+  const common=new Set(['roomsuite_shared_list','roomsuite_shared_upload','roomsuite_shared_download','roomsuite_preview_image','pixelroom_edit','vectorroom_create','cliproom_render','docsuite_create','gridsuite_create','decksuite_create','plansuite_create']);
   const enabled=name=>!groups||always.has(name)||(name.startsWith('roomsuite_productivity_')?suites.some(suite=>groups.has(suite)):name.startsWith('roomsuite_')?groups.has('shared'):groups.has(name.split('_')[0]));
-  const published=[],toolsByName=new Map(),registrar={registerTool(name,configuration,fn){if(!enabled(name))return;published.push(name);toolsByName.set(name,{configuration,fn});if(mode==='full'||always.has(name))return server.registerTool(name,configuration,fn);}};
+  const published=[],toolsByName=new Map(),registrar={registerTool(name,configuration,fn){if(!enabled(name))return;published.push(name);toolsByName.set(name,{configuration,fn});if(mode==='full'||always.has(name)||(mode==='standard'&&common.has(name)))return server.registerTool(name,configuration,fn);}};
   registrar.registerTool('roomsuite_check_deployment',{title:'Check running versions',description:'Compare this connected MCP process, the backend startup snapshot, current files, and served frontend HTML, CSS and JavaScript. Each connected agent must check its own MCP process.',inputSchema:z.object({}),outputSchema:z.object({ok:z.boolean(),version:z.string(),backend_version:z.string(),checked_frontend_files:z.number(),issues:z.array(z.string()),scope:z.string()}),annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}},handler(deploymentStatus));
   const capabilities={
     docsuite:{supports:['Formatted text, lists, tables, links and images','Comments with quoted context and resolve/delete','DOCX import/export and PDF export'],limits:['Comments do not follow edited text and are not exported to DOCX','Complex Word layout and styles may be simplified']},
@@ -96,7 +97,7 @@ function buildServer() {
   }, handler(async () => ({
     workspace:await workspace(), server_url:serverUrl(),
     rooms:published.filter(name=>name!=='roomsuite_info'),
-    notes:['Input and output files must be inside the configured MCP workspace; existing output files are never overwritten.', 'Editor-based tools use isolated headless browser sessions.', 'Cliproom imports media into the server library; it remains there after the call.', 'Updating a saved Cliproom project requires its current revision.', 'CaptureRoom live screen, camera and microphone access require an interactive user and are not exposed by this MCP server.',...(groups?['This connection exposes only the configured groups: '+[...groups].join(', ')+'.']:[]),...(mode==='compact'?['Compact mode: use roomsuite_find_tools, roomsuite_tool_schema and roomsuite_invoke to discover and call the listed tools.']:[])]
+    notes:['Input and output files must be inside the configured MCP workspace; existing output files are never overwritten.', 'Editor-based tools use isolated headless browser sessions.', 'Cliproom imports media into the server library; it remains there after the call.', 'Updating a saved Cliproom project requires its current revision.', 'CaptureRoom live screen, camera and microphone access require an interactive user and are not exposed by this MCP server.',...(groups?['This connection exposes only the configured groups: '+[...groups].join(', ')+'.']:[]),...(mode!=='full'?['Use roomsuite_find_tools, roomsuite_tool_schema and roomsuite_invoke for tools not directly advertised. Set ROOMSUITE_MCP_MODE=full for all direct tools.']:[])]
   })));
   registrar.registerTool('roomsuite_list_files', {
     title:'List workspace files',
@@ -212,7 +213,7 @@ function buildServer() {
   }, handler(renderWithPreview(renderSavedProject)));
   registerWorkspace(registrar,{handler,file,artifact});
   registerProductivity(registrar,{handler,file,artifact});
-  if(mode==='compact'){
+  if(mode!=='full'){
     server.registerTool('roomsuite_find_tools',{title:'Find RoomSuite tools',description:'Search available tool names and descriptions. Retrieve a selected schema with roomsuite_tool_schema, then call it using roomsuite_invoke.',inputSchema:z.object({query:z.string().max(200).optional(),offset:z.number().int().min(0).optional(),limit:z.number().int().min(1).max(100).optional()}),annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}},handler(async({query='',offset=0,limit=30})=>{
       const terms=query.toLowerCase().trim().split(/\s+/).filter(Boolean),matches=[...toolsByName].filter(([name,{configuration}])=>terms.every(term=>(name+' '+configuration.description).toLowerCase().includes(term))).map(([name,{configuration}])=>({name,description:configuration.description}));
       return {tools:matches.slice(offset,offset+limit),total:matches.length,next_offset:offset+limit<matches.length?offset+limit:null};

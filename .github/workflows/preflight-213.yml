@@ -1,0 +1,64 @@
+name: RoomSuite 2.1.3 preflight
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/roomsuite-213-preflight']
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: mcp/package-lock.json
+      - name: Install MCP build dependencies
+        run: npm ci --prefix mcp
+      - name: Test RoomSuite
+        run: npm test
+      - name: Install browser for Office and MCP tests
+        run: node mcp/node_modules/playwright/cli.js install chromium --only-shell
+      - name: Test Office and agent workflows
+        run: node --test --test-concurrency=1 mcp/tests/office-ui.test.mjs mcp/tests/productivity.test.mjs mcp/tests/productivity-ui.test.mjs mcp/tests/calendar-startup.test.mjs mcp/tests/notes-media-ui.test.mjs mcp/tests/deployment.test.mjs mcp/tests/tool-groups.test.mjs mcp/tests/workspace-ui.test.mjs mcp/tests/craft-workflow.test.mjs mcp/tests/integration.test.mjs mcp/tests/typography.test.mjs mcp/tests/mp4-export.test.mjs
+      - name: Build the installer
+        shell: pwsh
+        run: ./windows/build-installer.ps1
+      - name: Test the installer and optional MCP component
+        shell: pwsh
+        run: node windows/installer-smoke.cjs dist/RoomSuite-Setup.exe "$env:RUNNER_TEMP/roomsuite-tests"
+      - name: Record the installer checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash dist/RoomSuite-Setup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  RoomSuite-Setup.exe" | Set-Content dist/SHA256SUMS.txt -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RoomSuite-Windows
+          path: |
+            dist/RoomSuite-Setup.exe
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 90
+  linux-mp4:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: mcp/package-lock.json
+      - name: Install MCP dependencies
+        run: npm ci --prefix mcp
+      - name: Install Chromium
+        run: node mcp/node_modules/playwright/cli.js install chromium --only-shell --with-deps
+      - name: Test silent and audible MP4 exports
+        run: node --test --test-concurrency=1 mcp/tests/mp4-export.test.mjs

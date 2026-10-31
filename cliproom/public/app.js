@@ -29,6 +29,7 @@ let timelineZoom = 1, stageDrag = null, keyframeClipId = null, keyframeIndex = 0
 const audioGesture = T.createAudioClickGesture({ onCut:cutAudio, onOptions:(clipId, time) => selectAudio(clipId, time, true) });
 let undoStack = [], redoStack = [], currentTime = 0, playing = false, playClock = 0, frameId = 0, lastDrawTime = 0, playbackGeneration = 0;
 let audioContext = null, outputAudio = null, silentAudio = null, activeMedia = new Set(), recorder = null, recording = false, exportPreparing = false, cancelRecording = false, exportGeneration = 0;
+let exportFailure = '';
 let saveInProgress = false, mediaBusy = false, statusTimer = 0;
 let exportToShared = false;
 const elements = new Map(), images = new Map();
@@ -731,16 +732,23 @@ async function showProjects() {
     if (!$('projectsDialog').open) $('projectsDialog').showModal();
   } catch (error) { notify(error.message, 7000); }
 }
+function hasPotentialAudio() {
+  return state.audioClips.some(clip=>!state.audioTracks.find(track=>track.id===clip.trackId)?.muted) ||
+    state.clips.some(clip=>asset(clip.assetId)?.kind==='video' && !state.videoTracks.find(track=>track.id===clip.trackId)?.muted);
+}
 function formatSupport(preferred = 'auto') {
   if (!window.MediaRecorder || !canvas.captureStream) return null;
+  const audio=hasPotentialAudio();
   const choices = [
-    { mime:'video/mp4;codecs=avc1.42E01E,mp4a.40.2', extension:'mp4', label:'MP4' },
-    { mime:'video/mp4', extension:'mp4', label:'MP4' },
+    ...(audio ? [
+      { mime:'video/mp4;codecs=avc1.42E01E,mp4a.40.2', extension:'mp4', label:'MP4', audio:true },
+      { mime:'video/mp4;codecs=avc1.42E01E,opus', extension:'mp4', label:'MP4', audio:true, convertAudio:true }
+    ] : [{ mime:'video/mp4;codecs=avc1.42E01E', extension:'mp4', label:'MP4', audio:false }]),
     { mime:'video/webm;codecs=vp9,opus', extension:'webm', label:'WebM' },
     { mime:'video/webm;codecs=vp8,opus', extension:'webm', label:'WebM' },
     { mime:'video/webm', extension:'webm', label:'WebM' }
   ];
-  return choices.find(choice => (preferred === 'auto' || (choice.extension === preferred && (preferred !== 'mp4' || choice.mime.includes('avc1')))) && MediaRecorder.isTypeSupported(choice.mime)) || null;
+  return choices.find(choice => (preferred === 'auto' || choice.extension === preferred) && MediaRecorder.isTypeSupported(choice.mime)) || null;
 }
 function updateExportFormat() {
   const format = formatSupport($('exportFormatChoice').value);
@@ -756,30 +764,34 @@ async function exportVideo(preferred = $('exportFormatChoice').value) {
   const format = formatSupport(preferred); if (!format || recording || exportPreparing) return;
   const shared = exportToShared; exportToShared = false;
   const generation = ++exportGeneration;
-  let stream = null;
+  let stream = null,convertAudio=null; exportFailure='';
   exportPreparing = true; cancelRecording = false; $('startExportBtn').disabled = true; $('sharedExportBtn').disabled = true;
   $('exportCancelBtn').textContent = 'Cancel export'; $('exportProgressWrap').classList.remove('hidden');
   $('exportStatus').textContent = 'Preparing media…';
   try {
+    if(format.convertAudio){try{const module=await import('/mp4-audio.js');module.prepareMp4Audio();convertAudio=module.convertMp4Audio;}catch{throw new Error('MP4 audio conversion requires the optional MCP dependencies. Install or update them, or choose WebM.');}}
     await ensureAudio(); stopPlayback(); seek(0); renderFrame();
     await prepareExport();
     if (generation !== exportGeneration) return;
     stream = canvas.captureStream(30);
-    for (const track of outputAudio.stream.getAudioTracks()) stream.addTrack(track);
+    if(format.audio!==false)for (const track of outputAudio.stream.getAudioTracks()) stream.addTrack(track);
     const chunks = [], exportDuration=totalDuration(); recorder = new MediaRecorder(stream, { mimeType: format.mime, videoBitsPerSecond: state.quality === '1080p' ? 8000000 : 4500000 });
     recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
-    recorder.onerror = () => { cancelRecording = true; notify('Export failed in this browser.', 7000); };
+    recorder.onerror = () => { exportFailure='Export failed in this browser.';cancelRecording = true; notify(exportFailure, 7000); };
     recorder.onstop = async () => {
-      recording = false; $('startExportBtn').disabled = false; $('sharedExportBtn').disabled = false; $('exportCancelBtn').textContent = 'Cancel';
+      recording = false; exportPreparing=!!convertAudio && !cancelRecording;
       stream.getVideoTracks().forEach(track => track.stop());
       recorder = null; render();
-      if (!cancelRecording && chunks.length) {
+      try { if (!cancelRecording && chunks.length) {
         let blob = new Blob(chunks, { type: format.mime });const name = (state.name.trim().replace(/[\\/:*?"<>|]+/g, '-') || 'cliproom-video') + '.' + format.extension;
+        if(convertAudio){$('exportStatus').textContent='Encoding MP4 audio…';blob=await convertAudio(blob);if(cancelRecording || generation!==exportGeneration)return;}
         if(format.extension==='webm')try{blob=await RoomWebM.withDuration(blob,exportDuration);}catch(error){notify('The video is ready, but its duration metadata could not be added.',7000);}
         $('exportDialog').close();
         if (shared && window.RoomShared) { try { const path=await RoomShared.save(blob,name); if(path)notify('Saved to shared files: '+path); } catch(error) { notify(error.message,7000); } }
         else { const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);notify('Your video is ready.'); }
-      } else if (!cancelRecording) notify('The browser did not produce a video.', 7000);
+      } else if (!cancelRecording) {exportFailure='The browser did not produce a video.';notify(exportFailure, 7000);}
+      } catch(error) {exportFailure=error.message||'MP4 audio conversion failed.';$('exportStatus').textContent=exportFailure;notify(exportFailure,7000);}
+      finally {if(generation===exportGeneration){exportPreparing=false;$('startExportBtn').disabled=false;$('sharedExportBtn').disabled=false;$('exportCancelBtn').textContent='Cancel';render();}}
     };
     const started = await startPlayback(true, () => { exportPreparing = false; recording = true; recorder.start(1000); });
     if (!started) { stream.getVideoTracks().forEach(track => track.stop()); recorder = null; }
@@ -788,7 +800,7 @@ async function exportVideo(preferred = $('exportFormatChoice').value) {
     if (generation !== exportGeneration) return;
     exportPreparing = false; $('startExportBtn').disabled = false; $('sharedExportBtn').disabled = false; $('exportCancelBtn').textContent = 'Cancel';
     cancelRecording = true; if (recorder && recorder.state !== 'inactive') recorder.stop(); else recording = false;
-    stopPlayback(); $('exportStatus').textContent = error.message || 'Could not start export.'; notify(error.message || 'Could not start export.', 7000);
+    stopPlayback(); exportFailure=error.message || 'Could not start export.'; $('exportStatus').textContent = exportFailure; notify(exportFailure, 7000);
   }
 }
 

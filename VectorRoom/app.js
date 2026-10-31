@@ -39,7 +39,10 @@ function createObject(item, defs) {
   if (item.type === 'line') shape = el('line', { x1: item.x, y1: item.y, x2: item.x2, y2: item.y2, ...colors, fill: 'none' });
   if (item.type === 'path') shape = el('path', { d: pathData(item.points, item.closed), ...colors });
   if (item.type === 'image') shape = el('image', { x:item.x, y:item.y, width:item.width, height:item.height, href:item.data, preserveAspectRatio:'none' });
-  if (item.type === 'text') { shape = el('text', { x: item.x, y: item.y, 'font-size': item.fontSize, 'font-family': item.font, ...colors }); shape.textContent = item.text; }
+  if (item.type === 'text') {
+    shape = el('text', { x:item.x, y:item.y, 'font-size':item.fontSize, 'font-family':item.font, 'font-weight':item.fontWeight||'normal', 'font-style':item.fontStyle||'normal', 'text-anchor':({left:'start',center:'middle',right:'end'})[item.textAlign||'left'], 'letter-spacing':item.letterSpacing||0, ...colors });
+    item.text.split('\n').forEach((line,index)=>{const span=el('tspan',{x:item.x,dy:index?(item.lineHeight||1.2)+'em':0});span.textContent=line||'\u200b';shape.append(span);});
+  }
   if (shape) g.append(shape);
   return g;
 }
@@ -94,7 +97,7 @@ function render() {
     $('textFields').classList.toggle('hidden', item.type !== 'text');
     if (item.type !== 'path') { $('x').value = Math.round(item.x); $('y').value = Math.round(item.y); }
     if (['rect','ellipse','image'].includes(item.type)) { $('width').value = Math.round(item.width); $('height').value = Math.round(item.height); }
-    if (item.type === 'text') { $('text').value = item.text; $('fontSize').value = item.fontSize; $('font').value = item.font; }
+    if (item.type === 'text') { $('text').value = item.text; $('fontSize').value = item.fontSize; $('font').value = item.font; $('fontWeight').value=item.fontWeight||'normal';$('fontStyle').value=item.fontStyle||'normal';$('textAlign').value=item.textAlign||'left';$('lineHeight').value=item.lineHeight||1.2;$('letterSpacing').value=item.letterSpacing||0; }
   }
 }
 function updateTools() {
@@ -220,15 +223,17 @@ $('raise').addEventListener('click', () => change(() => { const i = objects.find
 $('lower').addEventListener('click', () => change(() => { const i = objects.findIndex(o => o.id === selected); if (i > 0) [objects[i],objects[i - 1]] = [objects[i - 1],objects[i]]; }));
 $('undo').addEventListener('click', () => { if (!undo.length) return; redo.push(JSON.stringify(objects)); objects = JSON.parse(undo.pop()); if (!selectedObject()) selected = null; draft = null; render(); status('Edit undone.'); });
 $('redo').addEventListener('click', () => { if (!redo.length) return; undo.push(JSON.stringify(objects)); objects=JSON.parse(redo.pop()); if (!selectedObject()) selected=null; draft=null; render(); status('Edit restored.'); });
-for (const key of ['fillMode','fill','fill2','stroke','strokeWidth','x','y','width','height','text','fontSize','font','rotation','opacity']) $(key).addEventListener('change', () => {
+for (const key of ['fillMode','fill','fill2','stroke','strokeWidth','x','y','width','height','text','fontSize','font','fontWeight','fontStyle','textAlign','lineHeight','letterSpacing','rotation','opacity']) $(key).addEventListener('change', () => {
   const item = selectedObject(); if (!item) return;
   change(() => {
-    if (['strokeWidth','x','y','width','height','fontSize','rotation','opacity'].includes(key)) {
+    if (['strokeWidth','x','y','width','height','fontSize','lineHeight','letterSpacing','rotation','opacity'].includes(key)) {
       let value = Number($(key).value); if (!Number.isFinite(value)) return;
       if (key === 'rotation') { ensurePivot(item); value = Math.max(-36000,Math.min(36000,value)); }
       if (key === 'opacity') value = Math.max(0,Math.min(100,value)) / 100;
       if (key === 'strokeWidth') value = Math.max(0, Math.min(100, value));
       if (key === 'fontSize') value = Math.max(8, Math.min(400, value));
+      if (key === 'lineHeight') value = Math.max(.8, Math.min(3, value));
+      if (key === 'letterSpacing') value = Math.max(-5, Math.min(30, value));
       if (key === 'width' || key === 'height') value = Math.max(1, value);
       if ((key === 'width' || key === 'height') && Number.isFinite(item.pivotX)) item[key === 'width' ? 'pivotX' : 'pivotY'] += (value-item[key])/2;
       if ((key === 'x' || key === 'y') && Number.isFinite(item.pivotX)) item[key === 'x' ? 'pivotX' : 'pivotY'] += value-item[key];
@@ -277,7 +282,12 @@ function validateDocument(doc) {
       if (['rect','ellipse','image'].includes(item.type)) { if (!num(object.width) || !num(object.height) || object.width <= 0 || object.height <= 0) throw new Error('An object size is invalid.'); item.width = object.width; item.height = object.height; }
       if(item.type==='image'){if(typeof object.data!=='string'||object.data.length>28*1024*1024||!/^data:image\/(png|jpeg|webp|gif|avif);base64,[a-z0-9+/=]+$/i.test(object.data))throw new Error('An embedded image is invalid.');item.data=object.data;}
       if (item.type === 'line') { if (!num(object.x2) || !num(object.y2)) throw new Error('A line is invalid.'); item.x2 = object.x2; item.y2 = object.y2; }
-      if (item.type === 'text') { if (typeof object.text !== 'string' || object.text.length > 500 || !num(object.fontSize) || object.fontSize < 8 || object.fontSize > 400 || !['sans-serif','serif','monospace'].includes(object.font)) throw new Error('Text is invalid.'); item.text = object.text; item.fontSize = object.fontSize; item.font = object.font; }
+      if (item.type === 'text') {
+        if (typeof object.text !== 'string' || object.text.length > 500 || !num(object.fontSize) || object.fontSize < 8 || object.fontSize > 400 || !['sans-serif','serif','monospace','Arial','Georgia','Verdana','Times New Roman','Trebuchet MS','Courier New'].includes(object.font)) throw new Error('Text is invalid.');
+        if(object.fontWeight!==undefined&&!['normal','bold'].includes(object.fontWeight)||object.fontStyle!==undefined&&!['normal','italic'].includes(object.fontStyle)||object.textAlign!==undefined&&!['left','center','right'].includes(object.textAlign)||object.lineHeight!==undefined&&(!num(object.lineHeight)||object.lineHeight<.8||object.lineHeight>3)||object.letterSpacing!==undefined&&(!num(object.letterSpacing)||object.letterSpacing< -5||object.letterSpacing>30))throw new Error('Text styling is invalid.');
+        item.text=object.text;item.fontSize=object.fontSize;item.font=object.font;
+        for(const key of ['fontWeight','fontStyle','textAlign','lineHeight','letterSpacing'])if(object[key]!==undefined)item[key]=object[key];
+      }
     }
     return item;
   });

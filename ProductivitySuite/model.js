@@ -7,6 +7,16 @@
   const formats = { docsuite:'roomsuite-document', gridsuite:'roomsuite-spreadsheet', decksuite:'roomsuite-presentation', plansuite:'roomsuite-calendar' };
   const extensions = { docsuite:'.docsuite', gridsuite:'.gridsuite', decksuite:'.decksuite', plansuite:'.plansuite' };
   const slideLayouts={standard:{title:{x:.06,y:.08,w:.88,h:.12},body:{x:.06,y:.24,w:.88,h:.64},image:{x:.55,y:.24,w:.36,h:.6}},split:{title:{x:.06,y:.08,w:.88,h:.12},body:{x:.06,y:.24,w:.46,h:.64},image:{x:.55,y:.24,w:.36,h:.6}},title:{title:{x:.1,y:.3,w:.8,h:.2},body:{x:.1,y:.53,w:.8,h:.25},image:{x:.68,y:.68,w:.22,h:.22}},statement:{title:{x:.1,y:.18,w:.8,h:.2},body:{x:.1,y:.42,w:.8,h:.38},image:{x:.72,y:.72,w:.2,h:.2}}};
+  const deckFonts=['Aptos','Arial','Georgia','Verdana','Times New Roman','Trebuchet MS','Courier New'];
+  const deckTextStyles={title:{font:'Aptos',size:32,bold:true,italic:false,align:'left',lineHeight:1.2,color:'#272534'},body:{font:'Aptos',size:20,bold:false,italic:false,align:'left',lineHeight:1.2,color:'#272534'}};
+  function slideTextStyles(value){
+    if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid slide text styles.');
+    const result={};for(const part of ['title','body']){
+      const input=value[part]||{},style={...deckTextStyles[part],...input};
+      if(!input||typeof input!=='object'||Array.isArray(input)||!deckFonts.includes(style.font)||!Number.isFinite(style.size)||style.size<8||style.size>120||typeof style.bold!=='boolean'||typeof style.italic!=='boolean'||!['left','center','right'].includes(style.align)||!Number.isFinite(style.lineHeight)||style.lineHeight<.8||style.lineHeight>3||!/^#[0-9a-f]{6}$/i.test(style.color))throw new Error('Invalid slide text style.');
+      result[part]={font:style.font,size:style.size,bold:style.bold,italic:style.italic,align:style.align,lineHeight:style.lineHeight,color:style.color};
+    }return result;
+  }
   const text = (value, max, name, nonempty = false) => {
     if (typeof value !== 'string' || value.length > max || (nonempty && !value.trim())) throw new Error('Invalid ' + name + '.');
     return value;
@@ -75,7 +85,8 @@
         const slideId=id(slide.id); if (seen.has(slideId)) throw new Error('Slide IDs must be unique.'); seen.add(slideId);
         const background=slide.background || '#ffffff'; if (!/^#[0-9a-f]{6}$/i.test(background)) throw new Error('Invalid slide background.');
         let layout;if(slide.layout!==undefined){if(!slide.layout||typeof slide.layout!=='object')throw new Error('Invalid slide layout.');layout={};for(const part of ['title','body','image']){const box=slide.layout[part];if(!box||typeof box!=='object'||['x','y','w','h'].some(key=>!Number.isFinite(box[key]))||box.x<0||box.y<0||box.w<=0||box.h<=0||box.x+box.w>1.001||box.y+box.h>1.001)throw new Error('Invalid slide position.');layout[part]={x:box.x,y:box.y,w:box.w,h:box.h};}}
-        return {id:slideId,title:text(slide.title,500,'slide title'),body:text(slide.body,50000,'slide text'),image:image(slide.image),background,...(layout?{layout}:{})};
+        const textStyles=slide.textStyles===undefined?undefined:slideTextStyles(slide.textStyles);
+        return {id:slideId,title:text(slide.title,500,'slide title'),body:text(slide.body,50000,'slide text'),image:image(slide.image),background,...(layout?{layout}:{}),...(textStyles?{textStyles}:{})};
       });
       return {...base,slides};
     }
@@ -99,5 +110,5 @@
     if (kind === 'plansuite') return {...base,events:[]};
     throw new Error('Unknown suite.');
   }
-  return {formats,extensions,slideLayouts,validate,empty};
+  return {formats,extensions,slideLayouts,deckFonts,deckTextStyles,slideTextStyles,validate,empty};
 });

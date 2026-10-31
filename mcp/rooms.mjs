@@ -253,7 +253,7 @@ function vectorObject(element) {
     item.x = element.x; item.y = element.y;
     if (element.type === 'rect' || element.type === 'ellipse') { item.width = element.width; item.height = element.height; }
     if (element.type === 'line') { item.x2 = element.x2; item.y2 = element.y2; }
-    if (element.type === 'text') { item.text = element.text; item.fontSize = element.font_size || 56; item.font = element.font || 'sans-serif'; }
+    if (element.type === 'text') { item.text = element.text; item.fontSize = element.font_size || 56; item.font = element.font || 'sans-serif'; for(const [source,target] of [['font_weight','fontWeight'],['font_style','fontStyle'],['text_align','textAlign'],['line_height','lineHeight'],['letter_spacing','letterSpacing']])if(element[source]!==undefined)item[target]=element[source]; }
   }
   return item;
 }

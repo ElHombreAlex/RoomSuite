@@ -15,7 +15,7 @@ async function call(name,args={}){const result=await client.callTool({name,argum
 before(async()=>{dir=await fs.mkdtemp(path.join(os.tmpdir(),'roomsuite-workspace-mcp-'));work=path.join(dir,'agent');await fs.mkdir(work);await fs.copyFile(path.join(root,'PixelRoom','dist','sample.jpg'),path.join(work,'photo.jpg'));
   server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,CLIPROOM_PORT:String(port),CLIPROOM_DATA:path.join(dir,'data')},stdio:['ignore','pipe','pipe']});
   await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Server did not start.')),10000);server.once('error',reject);server.once('exit',code=>reject(new Error('Server exited: '+code)));server.stdout.on('data',data=>{if(String(data).includes('RoomSuite is running')){clearTimeout(timer);resolve();}});});
-  const transport=new StdioClientTransport({command:process.execPath,args:[mcp],env:{...process.env,ROOMSUITE_MCP_WORKSPACE:work,ROOMSUITE_MCP_URL:base},stderr:'pipe'});client=new Client({name:'workspace-test',version:'1.0.0'});await client.connect(transport);
+  const transport=new StdioClientTransport({command:process.execPath,args:[mcp],env:{...process.env,ROOMSUITE_MCP_MODE:'full',ROOMSUITE_MCP_WORKSPACE:work,ROOMSUITE_MCP_URL:base},stderr:'pipe'});client=new Client({name:'workspace-test',version:'1.0.0'});await client.connect(transport);
 });
 after(async()=>{if(client)await client.close();if(server&&server.exitCode===null){server.kill();await new Promise(resolve=>server.once('exit',resolve));}const rel=path.relative(os.tmpdir(),dir||'');if(dir&&rel.startsWith('roomsuite-workspace-mcp-')&&!rel.includes(path.sep))await fs.rm(dir,{recursive:true,force:true});});
 
