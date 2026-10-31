@@ -198,6 +198,7 @@ function buildServer() {
       titles:z.array(z.object({ text:z.string().min(1).max(240), start:seconds, end:seconds, x:z.number().min(0).max(100).optional(), y:z.number().min(0).max(100).optional(), size:z.number().min(2).max(30).optional(), color:color.optional() })).max(100).optional(),
       render_mode:z.enum(['realtime','offline']).optional().describe('Offline exports WebM without waiting for playback; requires normal-speed video/audio, supported codecs, and a project up to 10 minutes. Defaults to realtime.'),
       output_format:z.enum(['auto','mp4','webm']).optional().describe('Request MP4/H.264 and AAC or WebM; MP4 requires realtime mode and browser codec support. A filename extension also selects the format.'),
+      include_audio:z.boolean().optional().describe('Default true. Set false only when a deliberately silent export is wanted.'),
       save_project:z.boolean().optional(),preview_times:previewTimes
     }), outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(renderWithPreview(renderVideo)));
@@ -208,7 +209,7 @@ function buildServer() {
       output:file.describe('New output filename stem, or a filename with the browser-supported video extension.'),
       project_id:z.string().uuid().optional().describe('ID of a saved Cliproom project on this server.'),
       project_path:file.optional().describe('Path to a Cliproom project JSON file containing the state or a saved-project wrapper.'),
-      render_mode:z.enum(['realtime','offline']).optional().describe('Offline exports WebM without waiting for playback; requires normal-speed video/audio, supported codecs, and a project up to 10 minutes. Defaults to realtime.'),output_format:z.enum(['auto','mp4','webm']).optional().describe('Request MP4/H.264 and AAC or WebM; MP4 requires realtime mode and browser codec support. A filename extension also selects the format.'),preview_times:previewTimes
+      render_mode:z.enum(['realtime','offline']).optional().describe('Offline exports WebM without waiting for playback; requires normal-speed video/audio, supported codecs, and a project up to 10 minutes. Defaults to realtime.'),output_format:z.enum(['auto','mp4','webm']).optional().describe('Request MP4/H.264 and AAC or WebM; MP4 requires realtime mode and browser codec support. A filename extension also selects the format.'),include_audio:z.boolean().optional().describe('Default true. Set false only when a deliberately silent export is wanted.'),preview_times:previewTimes
     }), outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(renderWithPreview(renderSavedProject)));
   registerWorkspace(registrar,{handler,file,artifact});

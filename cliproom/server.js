@@ -151,9 +151,11 @@ async function route(req, res) {
     if (!['realtime', 'offline'].includes(mode)) throw error(400, 'render_mode must be realtime or offline.');
     const format = body.output_format || 'auto';
     if (!['auto', 'mp4', 'webm'].includes(format)) throw error(400, 'output_format must be auto, mp4 or webm.');
+    if (body.include_audio !== undefined && typeof body.include_audio !== 'boolean') throw error(400, 'include_audio must be a boolean.');
     if (mode === 'offline' && format === 'mp4') throw error(422, 'Offline rendering outputs WebM. Use realtime mode for MP4/H.264.');
     const { validateProject, renderProject, offlineUnavailable } = require('./render');
     const project = await validateProject(input, ASSETS);
+    if(body.include_audio===false){project.audioClips=[];project.videoTracks=project.videoTracks.map(track=>({...track,muted:true}));}
     const unsupported = mode === 'offline' && await offlineUnavailable(project, ASSETS);
     if (unsupported) throw error(422, unsupported);
     if (res.destroyed) return;
@@ -162,10 +164,11 @@ async function route(req, res) {
     res.once('close', disconnected);
     let output;
     try {
-      output = await renderProject(project, { port:PORT, suiteMode:SUITE_MODE, signal:controller.signal, mode, format });
+      output = await renderProject(project, { port:PORT, suiteMode:SUITE_MODE, signal:controller.signal, mode, format, includeAudio:body.include_audio!==false });
       if (controller.signal.aborted) return;
       res.setHeader('Content-Type', output.mime); res.setHeader('Content-Length', output.bytes);
       res.setHeader('X-Cliproom-Render-Mode', mode);
+      res.setHeader('X-Cliproom-Audio-Included', body.include_audio===false?'false':'true');
       res.setHeader('Content-Disposition', 'attachment; filename="cliproom.' + output.extension + '"');
       res.writeHead(200); await pipeline(fs.createReadStream(output.file), res);
     } catch (cause) {

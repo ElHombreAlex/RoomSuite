@@ -738,7 +738,7 @@ function hasPotentialAudio() {
 }
 function formatSupport(preferred = 'auto') {
   if (!window.MediaRecorder || !canvas.captureStream) return null;
-  const audio=hasPotentialAudio();
+  const audio=$('exportAudio').value!=='mute' && hasPotentialAudio();
   const choices = [
     ...(audio ? [
       { mime:'video/mp4;codecs=avc1.42E01E,mp4a.40.2', extension:'mp4', label:'MP4', audio:true },
@@ -774,7 +774,7 @@ async function exportVideo(preferred = $('exportFormatChoice').value) {
     await prepareExport();
     if (generation !== exportGeneration) return;
     stream = canvas.captureStream(30);
-    if(format.audio!==false)for (const track of outputAudio.stream.getAudioTracks()) stream.addTrack(track);
+    if(format.audio!==false && $('exportAudio').value!=='mute')for (const track of outputAudio.stream.getAudioTracks()) stream.addTrack(track);
     const chunks = [], exportDuration=totalDuration(); recorder = new MediaRecorder(stream, { mimeType: format.mime, videoBitsPerSecond: state.quality === '1080p' ? 8000000 : 4500000 });
     recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
     recorder.onerror = () => { exportFailure='Export failed in this browser.';cancelRecording = true; notify(exportFailure, 7000); };
@@ -793,7 +793,7 @@ async function exportVideo(preferred = $('exportFormatChoice').value) {
       } catch(error) {exportFailure=error.message||'MP4 audio conversion failed.';$('exportStatus').textContent=exportFailure;notify(exportFailure,7000);}
       finally {if(generation===exportGeneration){exportPreparing=false;$('startExportBtn').disabled=false;$('sharedExportBtn').disabled=false;$('exportCancelBtn').textContent='Cancel';render();}}
     };
-    const started = await startPlayback(true, () => { exportPreparing = false; recording = true; recorder.start(1000); });
+    const started = await startPlayback(true, () => { exportPreparing = false; recording = true; recorder.start(1000); renderFrame(); });
     if (!started) { stream.getVideoTracks().forEach(track => track.stop()); recorder = null; }
   } catch (error) {
     if (stream && (!recorder || recorder.state === 'inactive')) stream.getVideoTracks().forEach(track => track.stop());
@@ -1034,7 +1034,7 @@ $('canvasFrame').addEventListener('pointerup', event => {
 $('canvasFrame').addEventListener('pointercancel', event => {
   if (!stageDrag || event.pointerId !== stageDrag.pointerId) return; state = JSON.parse(stageDrag.before); stageDrag = null; render();
 });
-$('exportBtn').addEventListener('click', showExport); $('exportFormatChoice').addEventListener('change', updateExportFormat); $('startExportBtn').addEventListener('click', () => { exportToShared=false; exportVideo(); });
+$('exportBtn').addEventListener('click', showExport); $('exportFormatChoice').addEventListener('change', updateExportFormat); $('exportAudio').addEventListener('change', updateExportFormat); $('startExportBtn').addEventListener('click', () => { exportToShared=false; exportVideo(); });
 if (window.RoomShared) {
   $('openSharedMedia').hidden=false; $('sharedExportBtn').hidden=false; $('openSharedMedia').classList.remove('hidden'); $('sharedExportBtn').classList.remove('hidden');
   $('openSharedMedia').addEventListener('click',async()=>{try{const file=await RoomShared.choose(['image/*','audio/*','video/*']);if(file)await importFiles([file]);}catch(error){notify(error.message,7000);}});

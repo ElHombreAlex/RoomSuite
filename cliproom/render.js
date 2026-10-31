@@ -92,7 +92,7 @@ async function offlineUnavailable(project, assetsDirectory) {
   }
   return null;
 }
-async function renderProject(project, { port, suiteMode, signal, mode = 'realtime', format = 'auto' }) {
+async function renderProject(project, { port, suiteMode, signal, mode = 'realtime', format = 'auto', includeAudio = true }) {
   const { chromium } = loadPlaywright();
   const options = { headless:true, args:['--autoplay-policy=no-user-gesture-required'] };
   if (process.env.ROOMSUITE_BROWSER_PATH) options.executablePath = process.env.ROOMSUITE_BROWSER_PATH;
@@ -135,7 +135,7 @@ async function renderProject(project, { port, suiteMode, signal, mode = 'realtim
           renderAt:(time, frames) => { currentTime = time; renderFrame(frames); } });
       }, project);
     } else {
-      const selected = await page.evaluate(({state,preferred}) => {setState(state,uid(),0);return formatSupport(preferred);}, {state:project,preferred:format});
+      const selected = await page.evaluate(({state,preferred,includeAudio}) => {setState(state,uid(),0);$('exportAudio').value=includeAudio?'auto':'mute';return formatSupport(preferred);}, {state:project,preferred:format,includeAudio});
       if (!selected) throw Object.assign(new Error(format === 'mp4' ? 'MP4/H.264 with AAC is unavailable in the rendering browser. Configure a browser with those encoders or request WebM.' : 'The requested video format is unavailable in the rendering browser.'), {status:422});
       extension = selected.extension;
       const started = await page.evaluate(async ({preferred}) => {

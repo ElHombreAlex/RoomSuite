@@ -403,6 +403,7 @@ export async function renderVideo(args, signal, progress) {
   await progress?.(5, 100, 'Project assembled; rendering on the Cliproom server…');
   const body = project ? { project_id:project.id } : { project:assembled.state };
   if (args.render_mode) body.render_mode = args.render_mode;
+  if (args.include_audio !== undefined) body.include_audio = args.include_audio;
   if (outputFormat !== 'auto') body.output_format = outputFormat;
   const result = await renderProjectRequest(body, args.output, signal);
   const warnings = entries.some(entry => entry.keyframes?.some(frame => frame.time !== undefined)) ?
@@ -422,6 +423,7 @@ export async function renderSavedProject(args, signal) {
     catch { throw new Error('Project file is not valid JSON.'); }
   }
   if (args.render_mode) body.render_mode = args.render_mode;
+  if (args.include_audio !== undefined) body.include_audio = args.include_audio;
   if (outputFormat !== 'auto') body.output_format = outputFormat;
   return renderProjectRequest(body, args.output, signal);
 }
@@ -440,6 +442,7 @@ async function renderProjectRequest(body, requestedOutput, signal) {
     if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'Render failed (' + response.status + ').'); }
     const actualMode = response.headers.get('x-cliproom-render-mode') || 'realtime';
     if (body.render_mode === 'offline' && actualMode !== 'offline') { await response.body?.cancel(); throw new Error('The RoomSuite server does not support offline rendering. Update and restart the server.'); }
+    if (body.include_audio === false && response.headers.get('x-cliproom-audio-included') !== 'false') { await response.body?.cancel(); throw new Error('The RoomSuite server did not confirm a silent export. Update and restart the server.'); }
     const type = (response.headers.get('content-type') || '').split(';')[0];
     const ext = type === 'video/mp4' ? '.mp4' : type === 'video/webm' ? '.webm' : null;
     if (!ext) { await response.body?.cancel(); throw new Error('The renderer returned an unsupported video format.'); }
