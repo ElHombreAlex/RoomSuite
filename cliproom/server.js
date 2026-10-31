@@ -143,6 +143,9 @@ async function route(req, res) {
     } else if (input && input.state) input = input.state;
     const mode = body.render_mode || 'realtime';
     if (!['realtime', 'offline'].includes(mode)) throw error(400, 'render_mode must be realtime or offline.');
+    const format = body.output_format || 'auto';
+    if (!['auto', 'mp4', 'webm'].includes(format)) throw error(400, 'output_format must be auto, mp4 or webm.');
+    if (mode === 'offline' && format === 'mp4') throw error(422, 'Offline rendering outputs WebM. Use realtime mode for MP4/H.264.');
     const { validateProject, renderProject, offlineUnavailable } = require('./render');
     const project = await validateProject(input, ASSETS);
     const unsupported = mode === 'offline' && await offlineUnavailable(project, ASSETS);
@@ -153,7 +156,7 @@ async function route(req, res) {
     res.once('close', disconnected);
     let output;
     try {
-      output = await renderProject(project, { port:PORT, suiteMode:SUITE_MODE, signal:controller.signal, mode });
+      output = await renderProject(project, { port:PORT, suiteMode:SUITE_MODE, signal:controller.signal, mode, format });
       if (controller.signal.aborted) return;
       res.setHeader('Content-Type', output.mime); res.setHeader('Content-Length', output.bytes);
       res.setHeader('X-Cliproom-Render-Mode', mode);

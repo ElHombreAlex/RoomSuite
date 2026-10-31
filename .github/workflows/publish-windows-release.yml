@@ -1,15 +1,15 @@
 name: Publish Windows release
 
 on:
-  push:
+  workflow_run:
+    workflows: ['Windows installer']
+    types: [completed]
     branches: [main]
-    paths: ['.github/workflows/publish-windows-release.yml']
   workflow_dispatch:
     inputs:
       tag:
-        description: 'New release tag'
+        description: 'Release tag matching the built package version'
         required: true
-        default: 'v2.0.0'
       build_run_id:
         description: 'Successful Windows installer workflow run ID'
         required: true
@@ -23,21 +23,36 @@ permissions:
 
 jobs:
   release:
-    if: github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'Publish Windows installer release'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_commit.message, 'Release RoomSuite v'))
     runs-on: windows-2025
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ inputs.tag }}
-      BUILD_RUN_ID: ${{ inputs.build_run_id }}
-      SOURCE_SHA: ${{ inputs.source_sha }}
+      BUILD_RUN_ID: ${{ inputs.build_run_id || github.event.workflow_run.id }}
+      SOURCE_SHA: ${{ inputs.source_sha || github.event.workflow_run.head_sha }}
+      AUTOMATIC: ${{ github.event_name == 'workflow_run' }}
     steps:
+      - name: Check out the built source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha || github.event.workflow_run.head_sha }}
       - name: Verify the build and download its artifact
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$') { throw 'Invalid release tag.' }
           if ($env:BUILD_RUN_ID -notmatch '^[0-9]+$' -or $env:SOURCE_SHA -notmatch '^[0-9a-f]{40}$') { throw 'Invalid workflow run ID or source SHA.' }
+          $version = (Get-Content -Raw package.json | ConvertFrom-Json).version
+          if (-not $env:RELEASE_TAG) { $env:RELEASE_TAG = "v$version" }
+          if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' -or $env:RELEASE_TAG -ne "v$version") { throw 'The release tag must match the built package version.' }
+          if ($env:AUTOMATIC -eq 'true') {
+            $message = gh api "repos/$env:GITHUB_REPOSITORY/commits/$env:SOURCE_SHA" --jq '.commit.message'
+            if ($LASTEXITCODE -ne 0 -or $message -ne "Release RoomSuite $env:RELEASE_TAG") { throw 'An automatic release requires the exact matching release commit message.' }
+          }
+          "RELEASE_TAG=$env:RELEASE_TAG" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           $runJson = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BUILD_RUN_ID"
           if ($LASTEXITCODE -ne 0) { throw 'Could not inspect the installer workflow run.' }
           $run = $runJson | ConvertFrom-Json
@@ -59,23 +74,6 @@ jobs:
           $refs = @($refsJson | ConvertFrom-Json)
           if ($refs | Where-Object { $_.ref -eq "refs/tags/$env:RELEASE_TAG" }) { throw 'The release tag already exists; refusing to replace it.' }
           $dir = Join-Path $env:RUNNER_TEMP 'roomsuite-release'
-          $notes = @(
-            '## What is new',
-            '',
-            '- Switch between creative rooms and the new productivity suites, with shared files available in both views.',
-            '- DocSuite, GridSuite and DeckSuite can import and export DOCX, XLSX and PPTX locally. Conversion may simplify unsupported formatting and objects; review the warnings and keep the original files.',
-            '- PlanSuite provides local calendar events, optional ntfy reminders and iCalendar export.',
-            '- MCP tools let agents create, inspect, edit and exchange documents, workbooks, slides and calendar events.',
-            '',
-            '## Windows installation',
-            '',
-            'Download RoomSuite-Setup.exe and run it to install RoomSuite for your Windows user. Choose the MCP option during setup to include agent tools and headless rendering.',
-            '',
-            'The installer includes Node.js. It is currently unsigned, so Windows may show an unfamiliar-publisher warning. SHA256SUMS.txt contains a checksum for the installer.',
-            '',
-            'See the repository README for Windows and Linux setup, MCP configuration, data storage, and backups.'
-          ) -join "`n"
-          $notesFile = Join-Path $dir 'release-notes.md'
-          [IO.File]::WriteAllText($notesFile, $notes, [Text.UTF8Encoding]::new($false))
-          gh release create $env:RELEASE_TAG (Join-Path $dir 'RoomSuite-Setup.exe') (Join-Path $dir 'SHA256SUMS.txt') --repo $env:GITHUB_REPOSITORY --target $env:SOURCE_SHA --title "RoomSuite $env:RELEASE_TAG" --notes-file $notesFile --latest
+          if (-not (Test-Path -LiteralPath 'RELEASE_NOTES.md')) { throw 'Release notes are missing from the built source.' }
+          gh release create $env:RELEASE_TAG (Join-Path $dir 'RoomSuite-Setup.exe') (Join-Path $dir 'SHA256SUMS.txt') --repo $env:GITHUB_REPOSITORY --target $env:SOURCE_SHA --title "RoomSuite $env:RELEASE_TAG" --notes-file RELEASE_NOTES.md --latest
           if ($LASTEXITCODE -ne 0) { throw 'Could not create the release; inspect GitHub for a draft before retrying.' }

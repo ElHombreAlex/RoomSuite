@@ -5,7 +5,7 @@
   else root.GridModel=model;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   const column=n=>{let out='';for(n++;n>0;n=Math.floor((n-1)/26))out=String.fromCharCode(65+(n-1)%26)+out;return out;};
-  function address(value){const match=/^([A-Z]{1,2})([1-9]\d{0,2})$/.exec(value);if(!match)throw new Error('#REF!');let col=0;for(const ch of match[1])col=col*26+ch.charCodeAt(0)-64;return {row:Number(match[2])-1,col:col-1};}
+  function address(value){const match=/^\$?([A-Z]{1,2})\$?([1-9]\d{0,2})$/.exec(value);if(!match)throw new Error('#REF!');let col=0;for(const ch of match[1])col=col*26+ch.charCodeAt(0)-64;return {row:Number(match[2])-1,col:col-1};}
   function range(value,rows=500,columns=52){
     if(typeof value!=='string')throw new Error('Enter a cell range.');const parts=value.toUpperCase().split(':');if(parts.length>2)throw new Error('Use one row or column, such as A1:A5.');
     let a,b;try{a=address(parts[0]);b=address(parts[1]||parts[0]);}catch{throw new Error('Use a cell range such as A1:A5.');}
@@ -32,7 +32,7 @@
   function calculate(cells, rows=500, columns=52, types={}) {
     const cache=new Map(), active=new Set();
     function cell(name) {
-      name=name.toUpperCase();const pos=address(name);if(pos.row>=rows || pos.col>=columns)throw new Error('#REF!');
+      name=name.toUpperCase();const pos=address(name);if(pos.row>=rows || pos.col>=columns)throw new Error('#REF!');name=name.replaceAll('$','');
       if(cache.has(name))return cache.get(name);if(active.has(name))throw new Error('#CYCLE!');if(active.size>=200)throw new Error('#DEPTH!');
       active.add(name);
       try {
@@ -50,7 +50,7 @@
     }
     function parse(formula) {
       const tokens=[];let rest=formula;
-      while(rest.length){const space=/^\s+/.exec(rest);if(space){rest=rest.slice(space[0].length);continue;}const m=/^"(?:[^"]|"")*"|^(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?|^[a-z]+[1-9]\d*|^[a-z]+|^(?:<=|>=|<>|[()+\-*/^,:<>=&%])/i.exec(rest);if(!m)throw new Error('#ERROR!');tokens.push(m[0].startsWith('"')?m[0]:m[0].toUpperCase());rest=rest.slice(m[0].length);if(tokens.length>10000)throw new Error('#ERROR!');}
+      while(rest.length){const space=/^\s+/.exec(rest);if(space){rest=rest.slice(space[0].length);continue;}const m=/^"(?:[^"]|"")*"|^(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?|^\$?[a-z]+\$?[1-9]\d*|^[a-z]+|^(?:<=|>=|<>|[()+\-*/^,:<>=&%])/i.exec(rest);if(!m)throw new Error('#ERROR!');tokens.push(m[0].startsWith('"')?m[0]:m[0].toUpperCase());rest=rest.slice(m[0].length);if(tokens.length>10000)throw new Error('#ERROR!');}
       let i=0;const take=x=>tokens[i]===x?(i++,true):false;const number=x=>{if(x===null)return 0;if(typeof x==='boolean')return x?1:0;if(typeof x!=='number')throw new Error('#VALUE!');return x;};
       function atom(){
         if(take('(')){const v=expr();if(!take(')'))throw new Error('#ERROR!');return v;}
@@ -58,7 +58,7 @@
         if(token.startsWith('"')){const value=token.slice(1,-1).replaceAll('""','"');return ()=>value;}
         if(/^(?:\d|\.)/.test(token)){const value=Number(token);return ()=>value;}
         if(token==='TRUE')return ()=>true;if(token==='FALSE')return ()=>false;
-        if(/^[A-Z]+[1-9]\d*$/.test(token)){
+        if(/^\$?[A-Z]+\$?[1-9]\d*$/.test(token)){
           if(!take(':'))return ()=>cell(token);
           const last=tokens[i++],a=address(token),b=address(last||'');if(a.row>=rows||b.row>=rows||a.col>=columns||b.col>=columns)throw new Error('#REF!');
           return ()=>{const result=[];for(let r=Math.min(a.row,b.row);r<=Math.max(a.row,b.row);r++)for(let c=Math.min(a.col,b.col);c<=Math.max(a.col,b.col);c++)result.push(cell(column(c)+(r+1)));result.rangeRows=Math.abs(a.row-b.row)+1;result.rangeColumns=Math.abs(a.col-b.col)+1;return result;};

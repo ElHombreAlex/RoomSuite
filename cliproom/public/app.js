@@ -731,7 +731,7 @@ async function showProjects() {
     if (!$('projectsDialog').open) $('projectsDialog').showModal();
   } catch (error) { notify(error.message, 7000); }
 }
-function formatSupport() {
+function formatSupport(preferred = 'auto') {
   if (!window.MediaRecorder || !canvas.captureStream) return null;
   const choices = [
     { mime:'video/mp4;codecs=avc1.42E01E,mp4a.40.2', extension:'mp4', label:'MP4' },
@@ -740,16 +740,20 @@ function formatSupport() {
     { mime:'video/webm;codecs=vp8,opus', extension:'webm', label:'WebM' },
     { mime:'video/webm', extension:'webm', label:'WebM' }
   ];
-  return choices.find(choice => MediaRecorder.isTypeSupported(choice.mime)) || null;
+  return choices.find(choice => (preferred === 'auto' || (choice.extension === preferred && (preferred !== 'mp4' || choice.mime.includes('avc1')))) && MediaRecorder.isTypeSupported(choice.mime)) || null;
+}
+function updateExportFormat() {
+  const format = formatSupport($('exportFormatChoice').value);
+  $('exportFormat').textContent = format ? `${format.label} · available in this browser` : 'The selected format is not available in this browser.';
+  $('startExportBtn').disabled = !format; $('sharedExportBtn').disabled = !format;
 }
 function showExport() {
   if (!totalDuration() || recording) return;
-  const format = formatSupport(); $('exportSummary').textContent = `${state.aspect} · ${state.quality} · ${seconds(totalDuration())}`;
-  $('exportFormat').textContent = format ? `${format.label} · format available in this browser` : 'Export is not supported by this browser.';
-  $('startExportBtn').disabled = !format; $('sharedExportBtn').disabled = !format; $('exportProgressWrap').classList.add('hidden'); $('exportDialog').showModal();
+  $('exportSummary').textContent = `${state.aspect} · ${state.quality} · ${seconds(totalDuration())}`;
+  updateExportFormat(); $('exportProgressWrap').classList.add('hidden'); $('exportDialog').showModal();
 }
-async function exportVideo() {
-  const format = formatSupport(); if (!format || recording || exportPreparing) return;
+async function exportVideo(preferred = $('exportFormatChoice').value) {
+  const format = formatSupport(preferred); if (!format || recording || exportPreparing) return;
   const shared = exportToShared; exportToShared = false;
   const generation = ++exportGeneration;
   let stream = null;
@@ -1018,7 +1022,7 @@ $('canvasFrame').addEventListener('pointerup', event => {
 $('canvasFrame').addEventListener('pointercancel', event => {
   if (!stageDrag || event.pointerId !== stageDrag.pointerId) return; state = JSON.parse(stageDrag.before); stageDrag = null; render();
 });
-$('exportBtn').addEventListener('click', showExport); $('startExportBtn').addEventListener('click', () => { exportToShared=false; exportVideo(); });
+$('exportBtn').addEventListener('click', showExport); $('exportFormatChoice').addEventListener('change', updateExportFormat); $('startExportBtn').addEventListener('click', () => { exportToShared=false; exportVideo(); });
 if (window.RoomShared) {
   $('openSharedMedia').hidden=false; $('sharedExportBtn').hidden=false; $('openSharedMedia').classList.remove('hidden'); $('sharedExportBtn').classList.remove('hidden');
   $('openSharedMedia').addEventListener('click',async()=>{try{const file=await RoomShared.choose(['image/*','audio/*','video/*']);if(file)await importFiles([file]);}catch(error){notify(error.message,7000);}});

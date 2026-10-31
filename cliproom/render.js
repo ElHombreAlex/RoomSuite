@@ -92,7 +92,7 @@ async function offlineUnavailable(project, assetsDirectory) {
   }
   return null;
 }
-async function renderProject(project, { port, suiteMode, signal, mode = 'realtime' }) {
+async function renderProject(project, { port, suiteMode, signal, mode = 'realtime', format = 'auto' }) {
   const { chromium } = loadPlaywright();
   const options = { headless:true, args:['--autoplay-policy=no-user-gesture-required'] };
   if (process.env.ROOMSUITE_BROWSER_PATH) options.executablePath = process.env.ROOMSUITE_BROWSER_PATH;
@@ -135,14 +135,14 @@ async function renderProject(project, { port, suiteMode, signal, mode = 'realtim
           renderAt:(time, frames) => { currentTime = time; renderFrame(frames); } });
       }, project);
     } else {
-      const format = await page.evaluate(() => formatSupport());
-      if (!format) throw new Error('Video export is unavailable in the rendering browser.');
-      extension = format.extension;
-      const started = await page.evaluate(async state => {
+      const selected = await page.evaluate(preferred => formatSupport(preferred), format);
+      if (!selected) throw Object.assign(new Error(format === 'mp4' ? 'MP4/H.264 with AAC is unavailable in the rendering browser. Configure a browser with those encoders or request WebM.' : 'The requested video format is unavailable in the rendering browser.'), {status:422});
+      extension = selected.extension;
+      const started = await page.evaluate(async ({state,preferred}) => {
         setState(state, uid(), 0);
-        await exportVideo();
+        await exportVideo(preferred);
         return { active:recording || exportPreparing, message:document.querySelector('#toast').textContent || document.querySelector('#exportStatus').textContent };
-      }, project);
+      }, {state:project,preferred:format});
       if (!started.active) throw new Error(started.message || 'Could not start the Cliproom render.');
     }
     const download = await downloadPromise;

@@ -236,6 +236,15 @@ test('project render endpoint accepts a saved project and returns video without 
     assert.ok(pixels.last[1] > pixels.last[0] + 15, 'picture moves to the right: ' + JSON.stringify(pixels));
   } finally { await browser.close(); }
 });
+test('explicit MP4 requests produce H.264 and AAC or a clear unsupported-codec error', async () => {
+  const browser=await chromium.launch({headless:true,...(process.env.ROOMSUITE_BROWSER_PATH?{executablePath:process.env.ROOMSUITE_BROWSER_PATH}:{})});let supported;
+  try {const page=await browser.newPage();supported=await page.evaluate(()=>MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E,mp4a.40.2'));}finally{await browser.close();}
+  if(!supported){await assert.rejects(call('cliproom_render_project',{project_id:savedProjectId,output:'requested.mp4'}),/MP4\/H\.264.*unavailable/);return;}
+  const output=await call('cliproom_render_project',{project_id:savedProjectId,output:'requested.mp4'});assert.equal(output.mime_type,'video/mp4');
+  const bytes=await fs.readFile(output.path);assert.equal(bytes.subarray(4,8).toString(),'ftyp');assert.ok(bytes.includes(Buffer.from('avc1')),'H.264 track missing');assert.ok(bytes.includes(Buffer.from('mp4a')),'AAC track missing');
+  await assert.rejects(call('cliproom_render_project',{project_id:savedProjectId,output:'mismatch.webm',output_format:'mp4'}),/does not match/);
+  await assert.rejects(call('cliproom_render_project',{project_id:savedProjectId,output:'requested.mp4'}),/already exists/);
+});
 test('project tools retrieve, copy and safely update a saved project', async () => {
   const list = await call('cliproom_list_projects'); assert.ok(list.projects.some(project => project.id === savedProjectId));
   const read = await call('cliproom_get_project',{project_id:savedProjectId}); assert.equal(read.project.state.name,'MCP test');

@@ -23,6 +23,11 @@ test('SUMIF totals matching categories, comparisons and wildcards',()=>{
   const cells={A1:'Equipment',A2:'equipment',A3:'Marketing',A4:'Equip*',B1:'4800',B2:'1440',B3:'1200',B4:'20',C1:'=SUMIF(A1:A4,"Equipment",B1:B4)',C2:'=SUMIF(B1:B4,">=1200")',C3:'=SUMIF(A1:A4,"Equip*",B1:B4)',C4:'=SUMIF(A1:A4,"Equip~*",B1:B4)',C5:'=SUMIF(A1:A4,"<>Equipment",B1:B4)',C6:'=SUMIF(A1:A4,"Equipment",B1:B2)',C7:'=SUMIF(A1:A2,"Equipment",B1:C1)'};
   const calculate=Grid.calculate(cells,100,26);assert.equal(calculate('C1'),'6240');assert.equal(calculate('C2'),'7440');assert.equal(calculate('C3'),'6260');assert.equal(calculate('C4'),'20');assert.equal(calculate('C5'),'1220');assert.equal(calculate('C6'),'#VALUE!');assert.equal(calculate('C7'),'#VALUE!');
 });
+test('spreadsheet formulas calculate absolute and mixed cell references without changing string literals',()=>{
+  const cells={A1:'4',A2:'6',B1:'=A1+$A1+A$1+$A$1',B2:'=SUM($A$1:A$2)',B3:'=SUMIF($A1:$A$2,">4",A$1:$A2)',B4:'="$A$1"',B5:'=$Z$500',C1:'=$C$1',C2:'=$$A1'};
+  const calculate=Grid.calculate(cells,100,26);
+  assert.equal(calculate('B1'),'16');assert.equal(calculate('B2'),'10');assert.equal(calculate('B3'),'6');assert.equal(calculate('B4'),'$A$1');assert.equal(calculate('B5'),'#REF!');assert.equal(calculate('C1'),'#CYCLE!');assert.equal(calculate('C2'),'#ERROR!');
+});
 test('CSV preserves commas, quotes, newlines and empty values',()=>{
   const rows=[['Name','Note',''],['Alex','A "quoted",\nsecond line','42'],['','last','']];
   assert.deepEqual(Grid.parseCsv(Grid.toCsv(rows)),rows);assert.throws(()=>Grid.parseCsv('"unclosed'),/quote/i);

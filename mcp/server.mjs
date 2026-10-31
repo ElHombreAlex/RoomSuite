@@ -74,14 +74,16 @@ function buildServer() {
   const knownGroups=['shared','notesroom','paintroom','pixelroom','soundroom','vectorroom','captureroom','cliproom','docsuite','gridsuite','decksuite','plansuite'];
   const configured=(process.env.ROOMSUITE_MCP_GROUPS||'').trim(),groups=configured?new Set(configured.toLowerCase().split(',').map(value=>value.trim()).filter(Boolean)):null;
   if(groups&&(!groups.size||[...groups].some(group=>!knownGroups.includes(group))))throw new Error('ROOMSUITE_MCP_GROUPS must be a comma-separated list of: '+knownGroups.join(', '));
+  const mode=(process.env.ROOMSUITE_MCP_MODE||'full').trim().toLowerCase();
+  if(!['full','compact'].includes(mode))throw new Error('ROOMSUITE_MCP_MODE must be full or compact.');
   const suites=['docsuite','gridsuite','decksuite','plansuite'],always=new Set(['roomsuite_info','roomsuite_check_deployment','roomsuite_discover_suites']);
   const enabled=name=>!groups||always.has(name)||(name.startsWith('roomsuite_productivity_')?suites.some(suite=>groups.has(suite)):name.startsWith('roomsuite_')?groups.has('shared'):groups.has(name.split('_')[0]));
-  const published=[],registrar={registerTool(name,configuration,fn){if(!enabled(name))return;published.push(name);return server.registerTool(name,configuration,fn);}};
+  const published=[],toolsByName=new Map(),registrar={registerTool(name,configuration,fn){if(!enabled(name))return;published.push(name);toolsByName.set(name,{configuration,fn});if(mode==='full'||always.has(name))return server.registerTool(name,configuration,fn);}};
   registrar.registerTool('roomsuite_check_deployment',{title:'Check running versions',description:'Compare this connected MCP process, the backend startup snapshot, current files, and served frontend HTML, CSS and JavaScript. Each connected agent must check its own MCP process.',inputSchema:z.object({}),outputSchema:z.object({ok:z.boolean(),version:z.string(),backend_version:z.string(),checked_frontend_files:z.number(),issues:z.array(z.string()),scope:z.string()}),annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}},handler(deploymentStatus));
   const capabilities={
     docsuite:{supports:['Formatted text, lists, tables, links and images','Comments with quoted context and resolve/delete','DOCX import/export and PDF export'],limits:['Comments do not follow edited text and are not exported to DOCX','Complex Word layout and styles may be simplified']},
     gridsuite:{supports:['Up to 20 sheets, 500 rows and 52 columns','Formula functions: SUM, SUMIF, AVERAGE, MIN, MAX, COUNT, COUNTA, IF, AND, OR, ROUND and ABS','Simple cell styles, one bar or line chart per sheet','Contains filter, CSV and XLSX import/export'],limits:['SUMIF supports matching ranges, text wildcards and basic comparisons; other Excel criteria features may differ','Only supported formulas calculate locally','Advanced charts and cell formatting may be simplified','Filters are not exported to XLSX']},
-    decksuite:{supports:['Up to 100 slides with text and one image','Four layout templates and positioned slide objects','PPTX import/export and PDF export','Set response_mode to summary on deck edits and reads to omit embedded images'],limits:['Multiple text boxes may be combined','Advanced layouts, charts, animations and formatting may be simplified']},
+    decksuite:{supports:['Up to 100 slides with text and one image','Four layout templates and positioned slide objects','PPTX import/export and PDF export','Deck results use compact image handles by default; request full embedded bytes only when needed'],limits:['Multiple text boxes may be combined','Advanced layouts, charts, animations and formatting may be simplified']},
     plansuite:{supports:['Month, week and day views','Up to 52 linked occurrences editable as a series','ICS export and optional ntfy reminders'],limits:['Repetitions are finite individual events; there is no calendar sync','Series time edits shift occurrences by the same elapsed duration']}
   };
   registrar.registerTool('roomsuite_discover_suites',{title:'Discover productivity suites',description:'List enabled productivity suites, their supported workflows and conversion limits. Mutations use a current base_revision; get the file again after a revision conflict.',inputSchema:z.object({suite:z.enum(['docsuite','gridsuite','decksuite','plansuite']).optional()}),outputSchema:z.object({suites:z.record(z.string(),z.object({supports:z.array(z.string()),limits:z.array(z.string())})),revisions:z.string(),errors:z.string()}),annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}},handler(async args=>({suites:Object.fromEntries(Object.entries(capabilities).filter(([name])=>(!groups||groups.has(name))&&(!args.suite||args.suite===name))),revisions:'Read a file to obtain its revision; pass it as base_revision to each edit. A null revision creates a new file.',errors:'Tool errors include a human-readable message and structuredContent.error.code. Schema validation errors are returned by the MCP protocol.'})));
@@ -94,7 +96,7 @@ function buildServer() {
   }, handler(async () => ({
     workspace:await workspace(), server_url:serverUrl(),
     rooms:published.filter(name=>name!=='roomsuite_info'),
-    notes:['Input and output files must be inside the configured MCP workspace; existing output files are never overwritten.', 'Editor-based tools use isolated headless browser sessions.', 'Cliproom imports media into the server library; it remains there after the call.', 'Updating a saved Cliproom project requires its current revision.', 'CaptureRoom live screen, camera and microphone access require an interactive user and are not exposed by this MCP server.',...(groups?['This connection exposes only the configured groups: '+[...groups].join(', ')+'.']:[])]
+    notes:['Input and output files must be inside the configured MCP workspace; existing output files are never overwritten.', 'Editor-based tools use isolated headless browser sessions.', 'Cliproom imports media into the server library; it remains there after the call.', 'Updating a saved Cliproom project requires its current revision.', 'CaptureRoom live screen, camera and microphone access require an interactive user and are not exposed by this MCP server.',...(groups?['This connection exposes only the configured groups: '+[...groups].join(', ')+'.']:[]),...(mode==='compact'?['Compact mode: use roomsuite_find_tools, roomsuite_tool_schema and roomsuite_invoke to discover and call the listed tools.']:[])]
   })));
   registrar.registerTool('roomsuite_list_files', {
     title:'List workspace files',
@@ -194,6 +196,7 @@ function buildServer() {
       frame_sequence:z.object({frames:z.array(file).min(1).max(1000).optional(),frame_asset_ids:z.array(z.string().uuid()).min(1).max(1000).optional(),fps:z.number().int().min(1).max(60),duration:z.number().min(.001).max(600),start:seconds.optional(),track:z.number().int().min(1).max(100).optional(),fit:z.enum(['contain','cover']).optional(),scale:animation.scale,x:animation.x,y:animation.y}).optional().describe('Cycle still images for exactly duration seconds. Supply either frames (local paths) or frame_asset_ids (existing Cliproom assets).'),
       titles:z.array(z.object({ text:z.string().min(1).max(240), start:seconds, end:seconds, x:z.number().min(0).max(100).optional(), y:z.number().min(0).max(100).optional(), size:z.number().min(2).max(30).optional(), color:color.optional() })).max(100).optional(),
       render_mode:z.enum(['realtime','offline']).optional().describe('Offline exports WebM without waiting for playback; requires normal-speed video/audio, supported codecs, and a project up to 10 minutes. Defaults to realtime.'),
+      output_format:z.enum(['auto','mp4','webm']).optional().describe('Request MP4/H.264 and AAC or WebM; MP4 requires realtime mode and browser codec support. A filename extension also selects the format.'),
       save_project:z.boolean().optional(),preview_times:previewTimes
     }), outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(renderWithPreview(renderVideo)));
@@ -204,11 +207,27 @@ function buildServer() {
       output:file.describe('New output filename stem, or a filename with the browser-supported video extension.'),
       project_id:z.string().uuid().optional().describe('ID of a saved Cliproom project on this server.'),
       project_path:file.optional().describe('Path to a Cliproom project JSON file containing the state or a saved-project wrapper.'),
-      render_mode:z.enum(['realtime','offline']).optional().describe('Offline exports WebM without waiting for playback; requires normal-speed video/audio, supported codecs, and a project up to 10 minutes. Defaults to realtime.'),preview_times:previewTimes
+      render_mode:z.enum(['realtime','offline']).optional().describe('Offline exports WebM without waiting for playback; requires normal-speed video/audio, supported codecs, and a project up to 10 minutes. Defaults to realtime.'),output_format:z.enum(['auto','mp4','webm']).optional().describe('Request MP4/H.264 and AAC or WebM; MP4 requires realtime mode and browser codec support. A filename extension also selects the format.'),preview_times:previewTimes
     }), outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(renderWithPreview(renderSavedProject)));
   registerWorkspace(registrar,{handler,file,artifact});
   registerProductivity(registrar,{handler,file,artifact});
+  if(mode==='compact'){
+    server.registerTool('roomsuite_find_tools',{title:'Find RoomSuite tools',description:'Search available tool names and descriptions. Retrieve a selected schema with roomsuite_tool_schema, then call it using roomsuite_invoke.',inputSchema:z.object({query:z.string().max(200).optional(),offset:z.number().int().min(0).optional(),limit:z.number().int().min(1).max(100).optional()}),annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}},handler(async({query='',offset=0,limit=30})=>{
+      const terms=query.toLowerCase().trim().split(/\s+/).filter(Boolean),matches=[...toolsByName].filter(([name,{configuration}])=>terms.every(term=>(name+' '+configuration.description).toLowerCase().includes(term))).map(([name,{configuration}])=>({name,description:configuration.description}));
+      return {tools:matches.slice(offset,offset+limit),total:matches.length,next_offset:offset+limit<matches.length?offset+limit:null};
+    }));
+    server.registerTool('roomsuite_tool_schema',{title:'Get a RoomSuite tool schema',description:'Return the exact input JSON Schema and annotations for an available tool. Schemas are returned only when requested.',inputSchema:z.object({name:z.string().min(1).max(200)}),annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}},handler(async({name})=>{
+      const entry=toolsByName.get(name);if(!entry)throw Object.assign(new Error('Tool not found or not enabled: '+name),{code:'NOT_FOUND'});
+      return {name,description:entry.configuration.description,input_schema:z.toJSONSchema(entry.configuration.inputSchema,{target:'draft-7'}),annotations:entry.configuration.annotations};
+    }));
+    server.registerTool('roomsuite_invoke',{title:'Invoke a RoomSuite tool',description:'Call an available tool by name with its arguments. First discover it and request its schema. The normal result, previews, errors and revision checks are preserved.',inputSchema:z.object({name:z.string().min(1).max(200),arguments:z.record(z.string(),z.unknown()).optional()}),annotations:{readOnlyHint:false,destructiveHint:true,openWorldHint:false}},async({name,arguments:args},context)=>{
+      const entry=toolsByName.get(name);if(!entry)return {isError:true,content:[{type:'text',text:'Tool not found or not enabled: '+name}],structuredContent:{error:{code:'NOT_FOUND',message:'Tool not found or not enabled: '+name}}};
+      const parsed=await entry.configuration.inputSchema.safeParseAsync(args||{});
+      if(!parsed.success){const message='Invalid arguments: '+parsed.error.issues.map(issue=>(issue.path.join('.')||'arguments')+': '+issue.message).join('; ');return {isError:true,content:[{type:'text',text:message}],structuredContent:{error:{code:'INVALID_ARGUMENT',message}}};}
+      return entry.fn(parsed.data,context);
+    });
+  }
   return server;
 }
 serveStdio(buildServer, { onerror:error => console.error('RoomSuite MCP:', error.message) });

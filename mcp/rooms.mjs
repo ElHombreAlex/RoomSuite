@@ -140,14 +140,20 @@ async function reuseCliproomMedia(page,id){return page.evaluate(async id=>{
   const media=kind==='image'?new Image():document.createElement(kind);await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Reading asset metadata timed out.')),20000),loaded=()=>{clearTimeout(timer);resolve();},failed=()=>{clearTimeout(timer);reject(new Error('The browser cannot decode asset '+id+'.'));};if(kind==='image')media.onload=loaded;else{media.preload='metadata';media.onloadedmetadata=loaded;}media.onerror=failed;media.src='/api/assets/'+id;});
   return {...meta,kind,duration:kind==='image'?5:await readableDuration(media),width:kind==='image'?media.naturalWidth:media.videoWidth||0,height:kind==='image'?media.naturalHeight:media.videoHeight||0};
 },id);}
-async function preflightVideoOutput(requested, mode) {
+async function preflightVideoOutput(requested, mode, requestedFormat) {
   const extension = path.extname(requested).toLowerCase();
+  if (extension && !['.mp4','.webm'].includes(extension)) throw new Error('Video output must use .mp4 or .webm.');
+  const format=requestedFormat && requestedFormat!=='auto' ? requestedFormat : (extension ? extension.slice(1) : 'auto');
+  if(extension && format!=='auto' && extension!=='.'+format)throw new Error('The output filename extension does not match output_format.');
   if (mode === 'offline') {
-    if (extension && extension !== '.webm') throw new Error('Offline rendering outputs WebM. Use a .webm filename or omit the extension.');
+    if (format === 'mp4') throw new Error('Offline rendering outputs WebM. Use realtime mode for MP4/H.264.');
     await outputPath(outputWithExtension(requested, '.webm'), ['.webm']);
+  } else if (format !== 'auto') {
+    await outputPath(outputWithExtension(requested, '.'+format), ['.'+format]);
   } else if (extension) {
     await outputPath(requested, ['.mp4', '.webm']);
   }
+  return format;
 }
 function validateMediaFields(entry,kind){
   if(kind!=='image'&&entry.duration!==undefined)throw Object.assign(new Error('The duration field applies only to still images. For audio or video, use source_in and source_out to choose the source range.'),{status:400});
@@ -317,7 +323,7 @@ export async function recordScene(args, signal, progress) {
 }
 
 export async function renderVideo(args, signal, progress) {
-  await preflightVideoOutput(args.output, args.render_mode);
+  const outputFormat=await preflightVideoOutput(args.output, args.render_mode, args.output_format);
   const entries=[...(args.media||[])],sequence=args.frame_sequence;
   if(!entries.length&&!sequence)throw new Error('Provide media or a frame_sequence.');
   if(sequence){if(!!sequence.frames===!!sequence.frame_asset_ids)throw new Error('Provide either frame_sequence.frames or frame_asset_ids.');const frames=sequence.frames||sequence.frame_asset_ids,count=Math.ceil(sequence.duration*sequence.fps-1e-9),start=sequence.start||0;if(count+entries.length>10000)throw new Error('Frame sequence exceeds the 10,000-clip project limit.');
@@ -397,6 +403,7 @@ export async function renderVideo(args, signal, progress) {
   await progress?.(5, 100, 'Project assembled; rendering on the Cliproom server…');
   const body = project ? { project_id:project.id } : { project:assembled.state };
   if (args.render_mode) body.render_mode = args.render_mode;
+  if (outputFormat !== 'auto') body.output_format = outputFormat;
   const result = await renderProjectRequest(body, args.output, signal);
   const warnings = entries.some(entry => entry.keyframes?.some(frame => frame.time !== undefined)) ?
     ['Legacy keyframe time means source-media seconds, not timeline seconds. Prefer timeline_time or source_time.'] : [];
@@ -405,7 +412,7 @@ export async function renderVideo(args, signal, progress) {
 
 export async function renderSavedProject(args, signal) {
   if (!!args.project_id === !!args.project_path) throw new Error('Provide either project_id or project_path.');
-  await preflightVideoOutput(args.output, args.render_mode);
+  const outputFormat=await preflightVideoOutput(args.output, args.render_mode, args.output_format);
   let body;
   if (args.project_id) body = { project_id:args.project_id };
   else {
@@ -415,6 +422,7 @@ export async function renderSavedProject(args, signal) {
     catch { throw new Error('Project file is not valid JSON.'); }
   }
   if (args.render_mode) body.render_mode = args.render_mode;
+  if (outputFormat !== 'auto') body.output_format = outputFormat;
   return renderProjectRequest(body, args.output, signal);
 }
 
@@ -435,6 +443,7 @@ async function renderProjectRequest(body, requestedOutput, signal) {
     const type = (response.headers.get('content-type') || '').split(';')[0];
     const ext = type === 'video/mp4' ? '.mp4' : type === 'video/webm' ? '.webm' : null;
     if (!ext) { await response.body?.cancel(); throw new Error('The renderer returned an unsupported video format.'); }
+    if (body.output_format && ext !== '.'+body.output_format) { await response.body?.cancel(); throw new Error('The renderer did not honor output_format. Update and restart the RoomSuite server.'); }
     let output;
     try { output = await outputPath(outputWithExtension(requestedOutput, ext), [ext]); }
     catch (error) { await response.body?.cancel(); throw error; }

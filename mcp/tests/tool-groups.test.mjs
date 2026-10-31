@@ -21,3 +21,18 @@ test('optional tool groups expose only selected workflows and report their scope
 test('invalid tool groups fail clearly at startup',async()=>{
   const result=await new Promise((resolve,reject)=>{const child=spawn(process.execPath,[mcp],{env:{...process.env,ROOMSUITE_MCP_GROUPS:'decktypo'},stdio:['pipe','pipe','pipe']});let error='',output='';child.stderr.on('data',chunk=>{error+=chunk;});child.stdout.on('data',chunk=>{output+=chunk;});child.once('error',reject);child.once('exit',code=>resolve({code,error,output}));child.stdin.end(JSON.stringify({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'probe',version:'1'}}})+'\n');});assert.match(result.error,/ROOMSUITE_MCP_GROUPS/);assert.match(result.output,/Internal server error/);
 });
+test('compact mode discovers schemas on demand and isolates malformed calls',async()=>{
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'roomsuite-groups-'));let client,direct;
+  try{
+    const transport=new StdioClientTransport({command:process.execPath,args:[mcp],env:{...process.env,ROOMSUITE_MCP_MODE:'compact',ROOMSUITE_MCP_GROUPS:'shared,decksuite',ROOMSUITE_MCP_WORKSPACE:dir},stderr:'pipe'});client=new Client({name:'compact-test',version:'1'});await client.connect(transport);
+    const advertised=(await client.listTools()).tools;assert.deepEqual(advertised.map(tool=>tool.name).sort(),['roomsuite_check_deployment','roomsuite_discover_suites','roomsuite_find_tools','roomsuite_info','roomsuite_invoke','roomsuite_tool_schema'].sort());
+    direct=new Client({name:'direct-test',version:'1'});await direct.connect(new StdioClientTransport({command:process.execPath,args:[mcp],env:{...process.env,ROOMSUITE_MCP_MODE:'full',ROOMSUITE_MCP_GROUPS:'shared,decksuite',ROOMSUITE_MCP_WORKSPACE:dir},stderr:'pipe'}));const directTools=(await direct.listTools()).tools;assert.ok(JSON.stringify(advertised).length<JSON.stringify(directTools).length*.35);
+    const found=await client.callTool({name:'roomsuite_find_tools',arguments:{query:'decksuite create'}});assert.ok(found.structuredContent.tools.some(item=>item.name==='decksuite_create'));
+    const schema=await client.callTool({name:'roomsuite_tool_schema',arguments:{name:'decksuite_create'}});assert.equal(schema.structuredContent.input_schema.type,'object');assert.ok(schema.structuredContent.input_schema.properties.path);
+    for(const tool of directTools){const detail=await client.callTool({name:'roomsuite_tool_schema',arguments:{name:tool.name}});assert.equal(detail.isError,undefined,'schema for '+tool.name);assert.equal(detail.structuredContent.input_schema.type,'object');}
+    const invalid=await client.callTool({name:'roomsuite_invoke',arguments:{name:'decksuite_create',arguments:{path:42}}});assert.equal(invalid.isError,true);assert.equal(invalid.structuredContent.error.code,'INVALID_ARGUMENT');
+    const blocked=await client.callTool({name:'roomsuite_invoke',arguments:{name:'soundroom_edit',arguments:{}}});assert.equal(blocked.structuredContent.error.code,'NOT_FOUND');
+    const info=await client.callTool({name:'roomsuite_invoke',arguments:{name:'roomsuite_info',arguments:{}}});assert.equal(info.isError,undefined);assert.ok(info.structuredContent.rooms.includes('decksuite_create'));
+    const normal=await client.callTool({name:'roomsuite_info',arguments:{}});assert.equal(normal.isError,undefined);
+  }finally{if(client)await client.close();if(direct)await direct.close();const actual=await fs.realpath(dir),parent=await fs.realpath(os.tmpdir());assert.equal(path.dirname(actual),parent);assert.ok(path.basename(actual).startsWith('roomsuite-groups-'));await fs.rm(actual,{recursive:true,force:true});}
+});
