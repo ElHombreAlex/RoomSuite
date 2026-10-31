@@ -36,7 +36,7 @@ before(async () => {
     server.once('error',reject); server.once('exit',code => reject(new Error('RoomSuite server exited: ' + code)));
     server.stdout.on('data', data => { if (String(data).includes('RoomSuite is running')) { clearTimeout(timer); resolve(); } });
   });
-  const transport = new StdioClientTransport({ command:process.execPath, args:[mcp], env:{ ...process.env, ROOMSUITE_MCP_WORKSPACE:work, ROOMSUITE_MCP_URL:base }, stderr:'pipe' });
+  const transport = new StdioClientTransport({ command:process.execPath, args:[mcp], env:{ ...process.env,ROOMSUITE_MCP_MODE:'full', ROOMSUITE_MCP_WORKSPACE:work, ROOMSUITE_MCP_URL:base }, stderr:'pipe' });
   client = new Client({ name:'roomsuite-integration-test', version:'1.0.0' }); await client.connect(transport);
 });
 after(async () => {
@@ -238,7 +238,7 @@ test('project render endpoint accepts a saved project and returns video without 
 });
 test('explicit MP4 requests produce H.264 and AAC or a clear unsupported-codec error', async () => {
   const browser=await chromium.launch({headless:true,...(process.env.ROOMSUITE_BROWSER_PATH?{executablePath:process.env.ROOMSUITE_BROWSER_PATH}:{})});let supported;
-  try {const page=await browser.newPage();supported=await page.evaluate(()=>MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E,mp4a.40.2'));}finally{await browser.close();}
+  try {const page=await browser.newPage();supported=await page.evaluate(()=>MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E,mp4a.40.2')||MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E,opus'));}finally{await browser.close();}
   if(!supported){await assert.rejects(call('cliproom_render_project',{project_id:savedProjectId,output:'requested.mp4'}),/MP4\/H\.264.*unavailable/);return;}
   const output=await call('cliproom_render_project',{project_id:savedProjectId,output:'requested.mp4'});assert.equal(output.mime_type,'video/mp4');
   const bytes=await fs.readFile(output.path);assert.equal(bytes.subarray(4,8).toString(),'ftyp');assert.ok(bytes.includes(Buffer.from('avc1')),'H.264 track missing');assert.ok(bytes.includes(Buffer.from('mp4a')),'AAC track missing');

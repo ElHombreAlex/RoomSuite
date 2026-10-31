@@ -24,7 +24,7 @@ const MAX_MEDIA = 2 * 1024 * 1024 * 1024;
 const MAX_PROJECT = 2 * 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const mediaTypes = new Set(['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-m4v', 'video/mpeg', 'audio/mpeg', 'audio/mp4', 'audio/x-m4a', 'audio/ogg', 'audio/wav', 'audio/wave', 'audio/x-wav', 'audio/webm', 'audio/aac', 'audio/flac', 'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif']);
-const publicFiles = { '/': ['index.html', 'text/html; charset=utf-8'], '/index.html': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/timeline.js': ['timeline.js', 'text/javascript; charset=utf-8'], '/webm-duration.js': ['webm-duration.js', 'text/javascript; charset=utf-8'], '/offline-render.js': ['offline-render.js', 'text/javascript; charset=utf-8'], '/styles.css': ['styles.css', 'text/css; charset=utf-8'] };
+const publicFiles = { '/': ['index.html', 'text/html; charset=utf-8'], '/index.html': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/timeline.js': ['timeline.js', 'text/javascript; charset=utf-8'], '/webm-duration.js': ['webm-duration.js', 'text/javascript; charset=utf-8'], '/offline-render.js': ['offline-render.js', 'text/javascript; charset=utf-8'], '/mp4-audio.js': ['mp4-audio.js', 'text/javascript; charset=utf-8'], '/styles.css': ['styles.css', 'text/css; charset=utf-8'] };
 const suiteRoots = { '/suite/': 'suite', '/soundroom/': 'SoundRoom', '/captureroom/': 'CaptureRoom', '/vectorroom/': 'VectorRoom', '/pixelroom/': 'PixelRoom/dist', '/notesroom/':'NotesRoom', '/paintroom/':'PaintRoom', '/files/':'FilesRoom', '/docsuite/':'ProductivitySuite', '/gridsuite/':'ProductivitySuite', '/decksuite/':'ProductivitySuite', '/plansuite/':'ProductivitySuite' };
 const suiteTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.onnx': 'application/octet-stream', '.bin': 'application/octet-stream', '.gz': 'application/gzip', '.txt': 'text/plain; charset=utf-8', '.woff': 'font/woff', '.woff2': 'font/woff2' };
 const locks = new Map();
@@ -32,7 +32,7 @@ const locks = new Map();
 function headers(res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
   res.setHeader('Cache-Control', 'no-store');
 }
 function json(res, status, body) {
@@ -130,6 +130,12 @@ async function route(req, res) {
     try { await fsp.access(bundle); } catch { throw error(503, 'Offline rendering requires the optional MCP dependencies. Run npm ci --prefix mcp.'); }
     return sendFile(req, res, bundle, 'text/javascript; charset=utf-8');
   }
+  if ((req.method === 'GET' || req.method === 'HEAD') && pathname === '/api/render/aac-encoder.mjs') {
+    const bundle = path.join(SUITE_ROOT,'mcp','node_modules','@mediabunny','aac-encoder','dist','bundles','mediabunny-aac-encoder.mjs');
+    let source;try{source=await fsp.readFile(bundle,'utf8');}catch{throw error(503,'MP4 audio conversion requires the optional MCP dependencies. Run npm ci --prefix mcp.');}
+    source=source.replaceAll('from "mediabunny"','from "/api/render/mediabunny.mjs"');
+    res.writeHead(200,{'Content-Type':'text/javascript; charset=utf-8','Content-Length':Buffer.byteLength(source)});return res.end(req.method==='HEAD'?undefined:source);
+  }
   if (req.method === 'POST' && pathname === '/api/render') {
     checkWrite(req);
     if (!String(req.headers['content-type'] || '').startsWith('application/json')) throw error(415, 'JSON is required.');
@@ -145,9 +151,11 @@ async function route(req, res) {
     if (!['realtime', 'offline'].includes(mode)) throw error(400, 'render_mode must be realtime or offline.');
     const format = body.output_format || 'auto';
     if (!['auto', 'mp4', 'webm'].includes(format)) throw error(400, 'output_format must be auto, mp4 or webm.');
+    if (body.include_audio !== undefined && typeof body.include_audio !== 'boolean') throw error(400, 'include_audio must be a boolean.');
     if (mode === 'offline' && format === 'mp4') throw error(422, 'Offline rendering outputs WebM. Use realtime mode for MP4/H.264.');
     const { validateProject, renderProject, offlineUnavailable } = require('./render');
     const project = await validateProject(input, ASSETS);
+    if(body.include_audio===false){project.audioClips=[];project.videoTracks=project.videoTracks.map(track=>({...track,muted:true}));}
     const unsupported = mode === 'offline' && await offlineUnavailable(project, ASSETS);
     if (unsupported) throw error(422, unsupported);
     if (res.destroyed) return;
@@ -156,10 +164,11 @@ async function route(req, res) {
     res.once('close', disconnected);
     let output;
     try {
-      output = await renderProject(project, { port:PORT, suiteMode:SUITE_MODE, signal:controller.signal, mode, format });
+      output = await renderProject(project, { port:PORT, suiteMode:SUITE_MODE, signal:controller.signal, mode, format, includeAudio:body.include_audio!==false });
       if (controller.signal.aborted) return;
       res.setHeader('Content-Type', output.mime); res.setHeader('Content-Length', output.bytes);
       res.setHeader('X-Cliproom-Render-Mode', mode);
+      res.setHeader('X-Cliproom-Audio-Included', body.include_audio===false?'false':'true');
       res.setHeader('Content-Disposition', 'attachment; filename="cliproom.' + output.extension + '"');
       res.writeHead(200); await pipeline(fs.createReadStream(output.file), res);
     } catch (cause) {

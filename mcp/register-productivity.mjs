@@ -8,7 +8,8 @@ const cell=z.record(z.string().regex(/^[A-Z]{1,2}[1-9]\d{0,2}$/),z.string().max(
 const date=z.string().min(16).max(40).describe('ISO 8601 date and time with Z or an explicit UTC offset.');
 const sheetName=z.string().min(1).max(31).optional().describe('Worksheet name; omit to use the active sheet.');
 const reminder=z.number().int().min(0).max(10080).nullable().optional().describe('Minutes before the event; null disables the ntfy reminder.');
-const slide=z.object({title:z.string().max(500).optional(),body:z.string().max(50000).optional(),background:z.string().regex(/^#[0-9a-f]{6}$/i).optional(),shared_image:path.optional()});
+const textStyle=z.object({font:z.enum(['Aptos','Arial','Georgia','Verdana','Times New Roman','Trebuchet MS','Courier New']).optional(),size:z.number().min(8).max(120).optional(),bold:z.boolean().optional(),italic:z.boolean().optional(),align:z.enum(['left','center','right']).optional(),line_height:z.number().min(.8).max(3).optional(),color:z.string().regex(/^#[0-9a-f]{6}$/i).optional()});
+const slide=z.object({title:z.string().max(500).optional(),body:z.string().max(50000).optional(),background:z.string().regex(/^#[0-9a-f]{6}$/i).optional(),shared_image:path.optional(),text_style:z.object({title:textStyle.optional(),body:textStyle.optional()}).optional()});
 const responseMode=z.enum(['compact','full','summary']).optional().describe('Default compact returns slide content with image handles instead of embedded bytes; full includes embedded images; summary returns slide IDs and titles only.');
 const deckResult=z.object({path:z.string(),revision:z.string(),url:z.string(),state:record.optional(),images_omitted:z.boolean().optional(),summary:z.object({title:z.string(),slide_count:z.number(),slides:z.array(z.object({id:z.string(),title:z.string(),has_image:z.boolean()}))}).optional(),warnings:z.array(z.string()).optional()});
 export function registerProductivity(server,{handler,file,artifact}){
