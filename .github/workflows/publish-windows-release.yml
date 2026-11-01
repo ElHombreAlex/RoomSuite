@@ -1,8 +1,8 @@
-name: Publish Windows release
+name: Publish RoomSuite release
 
 on:
   workflow_run:
-    workflows: ['Windows installer']
+    workflows: ['RoomSuite installers']
     types: [completed]
     branches: [main]
   workflow_dispatch:
@@ -11,7 +11,7 @@ on:
         description: 'Release tag matching the built package version'
         required: true
       build_run_id:
-        description: 'Successful Windows installer workflow run ID'
+        description: 'Successful RoomSuite installers workflow run ID'
         required: true
       source_sha:
         description: 'Full commit SHA built by that workflow run'
@@ -56,15 +56,29 @@ jobs:
           $runJson = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BUILD_RUN_ID"
           if ($LASTEXITCODE -ne 0) { throw 'Could not inspect the installer workflow run.' }
           $run = $runJson | ConvertFrom-Json
-          if ($run.conclusion -ne 'success' -or $run.head_sha -ne $env:SOURCE_SHA -or $run.head_branch -ne 'main' -or $run.path -ne '.github/workflows/windows-installer.yml') { throw 'The installer must come from a successful main-branch Windows installer run at the specified commit.' }
+          if ($run.conclusion -ne 'success' -or $run.head_sha -ne $env:SOURCE_SHA -or $run.head_branch -ne 'main' -or $run.path -ne '.github/workflows/windows-installer.yml') { throw 'Installers must come from a successful main-branch RoomSuite installers run at the specified commit.' }
           $dir = Join-Path $env:RUNNER_TEMP 'roomsuite-release'
-          gh run download $env:BUILD_RUN_ID --repo $env:GITHUB_REPOSITORY --name RoomSuite-Windows --dir $dir
-          if ($LASTEXITCODE -ne 0) { throw 'Could not download the verified installer artifact.' }
-          $installer = Join-Path $dir 'RoomSuite-Setup.exe'
-          $checksums = Join-Path $dir 'SHA256SUMS.txt'
-          if (-not (Test-Path -LiteralPath $installer) -or -not (Test-Path -LiteralPath $checksums)) { throw 'The artifact is missing the installer or checksum.' }
-          $expected = ((Get-Content -LiteralPath $checksums -TotalCount 1) -split '\s+')[0].ToLowerInvariant()
-          if ($expected -notmatch '^[0-9a-f]{64}$' -or (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'The installer checksum does not match the build artifact.' }
+          $packages = @(
+            @{ Artifact='RoomSuite-Windows'; File='RoomSuite-Setup.exe'; Sums='SHA256SUMS.txt' },
+            @{ Artifact='RoomSuite-macOS-arm64'; File='RoomSuite-macOS-arm64.dmg'; Sums='SHA256SUMS-macOS-arm64.txt' },
+            @{ Artifact='RoomSuite-macOS-x64'; File='RoomSuite-macOS-x64.dmg'; Sums='SHA256SUMS-macOS-x64.txt' }
+          )
+          $lines = @()
+          foreach ($package in $packages) {
+            $packageDir = Join-Path $dir $package.Artifact
+            gh run download $env:BUILD_RUN_ID --repo $env:GITHUB_REPOSITORY --name $package.Artifact --dir $packageDir
+            if ($LASTEXITCODE -ne 0) { throw "Could not download $($package.Artifact)." }
+            $installer = Join-Path $packageDir $package.File
+            $checksums = Join-Path $packageDir $package.Sums
+            if (-not (Test-Path -LiteralPath $installer -PathType Leaf) -or -not (Test-Path -LiteralPath $checksums -PathType Leaf)) { throw "Missing installer or checksum for $($package.Artifact)." }
+            $checksumLines = @(Get-Content -LiteralPath $checksums)
+            if ($checksumLines.Count -ne 1 -or $checksumLines[0] -notmatch '^([0-9a-fA-F]{64})\s+(.+)$' -or $Matches[2] -ne $package.File) { throw "Invalid checksum file for $($package.Artifact)." }
+            $expected = $Matches[1].ToLowerInvariant()
+            if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw "Checksum mismatch for $($package.File)." }
+            Copy-Item -LiteralPath $installer -Destination (Join-Path $dir $package.File)
+            $lines += "$expected  $($package.File)"
+          }
+          $lines | Set-Content -LiteralPath (Join-Path $dir 'SHA256SUMS.txt') -Encoding ascii
       - name: Create the release
         shell: pwsh
         run: |
@@ -75,5 +89,5 @@ jobs:
           if ($refs | Where-Object { $_.ref -eq "refs/tags/$env:RELEASE_TAG" }) { throw 'The release tag already exists; refusing to replace it.' }
           $dir = Join-Path $env:RUNNER_TEMP 'roomsuite-release'
           if (-not (Test-Path -LiteralPath 'RELEASE_NOTES.md')) { throw 'Release notes are missing from the built source.' }
-          gh release create $env:RELEASE_TAG (Join-Path $dir 'RoomSuite-Setup.exe') (Join-Path $dir 'SHA256SUMS.txt') --repo $env:GITHUB_REPOSITORY --target $env:SOURCE_SHA --title "RoomSuite $env:RELEASE_TAG" --notes-file RELEASE_NOTES.md --latest
+          gh release create $env:RELEASE_TAG (Join-Path $dir 'RoomSuite-Setup.exe') (Join-Path $dir 'RoomSuite-macOS-arm64.dmg') (Join-Path $dir 'RoomSuite-macOS-x64.dmg') (Join-Path $dir 'SHA256SUMS.txt') --repo $env:GITHUB_REPOSITORY --target $env:SOURCE_SHA --title "RoomSuite $env:RELEASE_TAG" --notes-file RELEASE_NOTES.md --latest
           if ($LASTEXITCODE -ne 0) { throw 'Could not create the release; inspect GitHub for a draft before retrying.' }

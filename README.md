@@ -51,6 +51,26 @@ node server.js
 
 Use only one RoomSuite server with a particular data directory at a time. The source build does not update the installed application; opening the installer again will run its installed version.
 
+## macOS setup
+
+RoomSuite provides separate installers for Apple silicon and Intel Macs running macOS 14 or later. Download the matching `RoomSuite-macOS-arm64.dmg` or `RoomSuite-macOS-x64.dmg` from the [latest GitHub release](https://github.com/ElHombreAlex/RoomSuite/releases/latest). Open the disk image, drag **RoomSuite** to **Applications**, and open it from there. The app includes Node.js, the MCP dependencies and headless Chromium; Git, Node and npm are not needed on the Mac.
+
+The app is not signed or notarized. macOS will warn on first launch; after trying to open it, use **System Settings → Privacy & Security → Open Anyway** to approve it. See [Apple's guidance](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac) and the [Mac installer guide](macos/README.md). Do not disable Gatekeeper globally.
+
+RoomSuite opens in your browser at **http://127.0.0.1:8090/**. Keep its launcher window open while working; closing it stops the server. Use **MCP setup** to copy agent configuration. The package does not change your agent settings. Your files and agent workspace are stored in `~/Library/Application Support/RoomSuite`, outside the application; close RoomSuite before updating or backing up. Replacing or removing the app does not remove this folder. Browser codec support and macOS camera, microphone and screen-recording permissions affect the available features.
+
+### Run from source on macOS
+
+Install Git and Node.js 20 or later, then use Terminal:
+
+~~~sh
+git clone https://github.com/ElHombreAlex/RoomSuite.git
+cd RoomSuite
+node server.js
+~~~
+
+Open **http://127.0.0.1:8090/** and keep Terminal open. Press Ctrl+C to stop the server. The standard interface requires no npm install; the [MCP guide](mcp/README.md#install) covers optional agent tools and headless rendering. A source checkout uses its own data directory unless configured explicitly.
+
 ## Linux setup
 
 Install Git and Node.js 18 or later (use Node.js 20 or later for MCP and server-side rendering):
@@ -63,7 +83,7 @@ node server.js
 
 Open **http://127.0.0.1:8090/** on the server and choose a room. Press Ctrl+C to stop it. No npm install is needed for the standard interface; see the [MCP guide](mcp/README.md#install) for optional agent tools and headless rendering. An adaptable systemd example is in [deploy/roomsuite.service.example](deploy/roomsuite.service.example).
 
-For source-based installs on either platform, `CLIPROOM_PORT`, `CLIPROOM_DATA`, `ROOMSUITE_DATA`, and `CLIPROOM_ALLOWED_HOSTS` configure the server. Cliproom projects and media default to `cliproom/data/`; notes, PaintRoom projects and shared files default to `cliproom/data/workspace/`. See [Storage and backups](#storage-and-backups) before deploying. Clones and separate installations have independent data; GitHub stores source code, not your projects.
+For source-based installs, `CLIPROOM_PORT`, `CLIPROOM_DATA`, `ROOMSUITE_DATA`, and `CLIPROOM_ALLOWED_HOSTS` configure the server. Cliproom projects and media default to `cliproom/data/`; notes, PaintRoom projects and shared files default to `cliproom/data/workspace/`. See [Storage and backups](#storage-and-backups) before deploying. Clones and separate installations have independent data; GitHub stores source code, not your projects.
 
 ## Use it on other devices
 
@@ -92,7 +112,7 @@ Open **Shared files** to upload files from any authorized device, make folders, 
 
 ## Productivity suites
 
-DocSuite, GridSuite, DeckSuite and PlanSuite use editable `.docsuite`, `.gridsuite`, `.decksuite` and `.plansuite` files in **the same Shared files** used by the creative rooms. Use **Save** or Ctrl+S, and choose a location the first time; **Save a copy** creates a separate file. Changes are not automatically saved. If another tab, device or agent updates a file, a revision check prevents a stale save from replacing it. Open the latest version or save your changes as a copy.
+DocSuite, GridSuite, DeckSuite and PlanSuite use editable `.docsuite`, `.gridsuite`, `.decksuite` and `.plansuite` files in **the same Shared files** used by the creative rooms. Use **Save** or Ctrl+S (Command+S on Mac), and choose a location the first time; **Save a copy** creates a separate file. Changes are not automatically saved. If another tab, device or agent updates a file, a revision check prevents a stale save from replacing it. Open the latest version or save your changes as a copy.
 
 DocSuite supports headings, text size and color, bold/italic/underline/strikethrough, lists, alignment, links, simple tables and embedded shared images up to 2 MiB. Add, resolve or delete comments; a comment can keep a snapshot of selected text as context, but it does not move with subsequent edits. Import/export DOCX and text or use Print / PDF. Word import retains supported text, underline and font sizes, lists, tables, links and images. Complex layout, colors, comments and other Word features may be simplified or omitted. DocSuite comments are not exported to Word; the export warns when they are present.
 

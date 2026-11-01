@@ -1,8 +1,10 @@
-name: Windows installer
+name: RoomSuite installers
 
 on:
   workflow_dispatch:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
 
 permissions:
@@ -62,3 +64,45 @@ jobs:
         run: node mcp/node_modules/playwright/cli.js install chromium --only-shell --with-deps
       - name: Test silent and audible MP4 exports
         run: node --test --test-concurrency=1 mcp/tests/mp4-export.test.mjs
+  macos:
+    name: macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          architecture: ${{ matrix.arch }}
+          cache: npm
+          cache-dependency-path: mcp/package-lock.json
+      - name: Install MCP build dependencies
+        run: npm ci --prefix mcp
+      - name: Test RoomSuite on macOS
+        run: npm test
+      - name: Install Chromium for browser tests
+        run: node mcp/node_modules/playwright/cli.js install chromium --only-shell
+      - name: Test creative and Office workflows
+        run: node --test --test-concurrency=1 mcp/tests/office-ui.test.mjs mcp/tests/integration.test.mjs mcp/tests/mp4-export.test.mjs
+      - name: Build the Mac installer
+        run: bash macos/build-installer.sh
+      - name: Test the installed application and MCP
+        run: bash macos/smoke-installer.sh "dist/RoomSuite-macOS-${{ matrix.arch }}.dmg"
+      - name: Record the installer checksum
+        run: cd dist && shasum -a 256 "RoomSuite-macOS-${{ matrix.arch }}.dmg" > "SHA256SUMS-macOS-${{ matrix.arch }}.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RoomSuite-macOS-${{ matrix.arch }}
+          path: |
+            dist/RoomSuite-macOS-${{ matrix.arch }}.dmg
+            dist/SHA256SUMS-macOS-${{ matrix.arch }}.txt
+          if-no-files-found: error
+          retention-days: 90
