@@ -8,7 +8,9 @@ The MCP integration requires **Node.js 20 or later**, npm, and a Chromium browse
 
 On Windows, the [RoomSuite installer](../windows/README.md) can install the MCP dependencies and matching headless Chromium as an optional component. Start RoomSuite and select **MCP setup** in its launcher to copy a configuration containing the correct bundled executable, workspace and browser paths. Add it to your agent's MCP settings and restart the agent. This route needs no separate Node, npm or browser installation.
 
-For a source checkout on Windows or Linux, run from the repository root:
+On macOS, the [RoomSuite app](../macos/README.md) includes the MCP dependencies and matching headless Chromium. Open **MCP setup** in its launcher to copy the configuration; add it to the agent's settings and restart the agent.
+
+For a source checkout on Windows, macOS or Linux, run from the repository root:
 
 ~~~sh
 npm ci --prefix mcp
