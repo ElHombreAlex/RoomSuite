@@ -6,7 +6,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const crypto=require('node:crypto');
 const root=__dirname;
-const frontendRoots={suite:['/suite/'],SoundRoom:['/soundroom/'],CaptureRoom:['/captureroom/'],VectorRoom:['/vectorroom/'],NotesRoom:['/notesroom/'],PaintRoom:['/paintroom/'],FilesRoom:['/files/'],ProductivitySuite:['/docsuite/','/gridsuite/','/decksuite/','/plansuite/'],'PixelRoom/dist':['/pixelroom/'],'cliproom/public':['/']};
+const frontendRoots={suite:['/suite/'],SoundRoom:['/soundroom/'],CaptureRoom:['/captureroom/'],VectorRoom:['/vectorroom/'],MotionRoom:['/motionroom/'],NotesRoom:['/notesroom/'],PaintRoom:['/paintroom/'],FilesRoom:['/files/'],ProductivitySuite:['/docsuite/','/gridsuite/','/decksuite/','/plansuite/'],'PixelRoom/dist':['/pixelroom/'],'cliproom/public':['/']};
 const hash=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 function walk(directory,base=''){
   if(!fs.existsSync(directory))return [];

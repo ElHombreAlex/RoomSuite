@@ -36,7 +36,7 @@ function dropTarget(element,destination){
 }
 function choices(name){const ext=name.split('.').pop().toLowerCase(), out=[];
   if(['png','jpg','jpeg','webp','gif','avif'].includes(ext))out.push(['PaintRoom','/paintroom/'],['PixelRoom','/pixelroom/'],['VectorRoom','/vectorroom/'],['CaptureRoom','/captureroom/'],['Cliproom','/cliproom/']);
-  if(['paintroom'].includes(ext))out.push(['PaintRoom','/paintroom/']);if(['pixelroom'].includes(ext))out.push(['PixelRoom','/pixelroom/']);if(['vectorroom'].includes(ext))out.push(['VectorRoom','/vectorroom/']);
+  if(['paintroom'].includes(ext))out.push(['PaintRoom','/paintroom/'],['MotionRoom','/motionroom/']);if(['pixelroom'].includes(ext))out.push(['PixelRoom','/pixelroom/']);if(['vectorroom'].includes(ext))out.push(['VectorRoom','/vectorroom/'],['MotionRoom','/motionroom/']);if(ext==='motionroom')out.push(['MotionRoom','/motionroom/']);
   if(ext==='roomgrade')out.push(['PixelRoom','/pixelroom/'],['Cliproom','/cliproom/']);
   if(ext==='soundroom')out.push(['SoundRoom','/soundroom/']);
   if(ext==='capturescene')out.push(['CaptureRoom','/captureroom/']);

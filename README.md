@@ -2,7 +2,7 @@
 
 RoomSuite is a self-hosted workspace for creative work, productivity, notes and shared files. Use the launcher switch to choose Creative or Productivity. Each room or suite opens in its own tab or window, so you can work in several at once:
 
-RoomSuite 3 adds shared photo and video grading with portable looks, editable audio sessions, safer shared-file recovery, and improvements across the creative and productivity rooms. See [what's new and known limits](RELEASE_NOTES.md).
+RoomSuite 3 adds shared photo and video grading with portable looks, editable audio sessions, safer shared-file recovery, and improvements across the creative and productivity rooms. Version 3.2 adds MotionRoom for animating artwork. See [what's new and known limits](RELEASE_NOTES.md).
 
 - **PixelRoom** — photo editing, layers, text and local subject/text isolation.
 - **Cliproom** — a multitrack video editor with a server-backed media and project library.
@@ -11,6 +11,7 @@ RoomSuite 3 adds shared photo and video grading with portable looks, editable au
 - **VectorRoom** — create shapes, text and editable Bézier paths, with solid or gradient fills and SVG/PNG export.
 - **NotesRoom** — write and organize Markdown notes, add voice clips, images and quick sketches, and use a visual board or browser dictation.
 - **PaintRoom** — paint and draw on a layered canvas, import images, transform layers, and save editable artwork.
+- **MotionRoom** — animate PaintRoom layers and VectorRoom objects on a keyframe timeline, then export video.
 - **DocSuite** — write formatted documents with lists, tables, links and shared images; import/export DOCX and plain text, and print to PDF.
 - **GridSuite** — edit workbooks, calculate common formulas, make bar or line charts, and import/export XLSX and CSV.
 - **DeckSuite** — create and present slides with text and shared images, import/export PPTX, and print to PDF.
@@ -187,6 +188,14 @@ Recordings, uploaded images and sketches are stored separately in the `NotesRoom
 Draw with a brush or eraser, choose a built-in brush preset, and use vertical or horizontal symmetry. A compatible pen can vary stroke width with pressure; mirrored strokes remain individually editable. Make lines, rectangles, ellipses and Bézier paths, and move, reorder, hide or transform layers. The Bézier path tool adds points on click and shapes their handles on drag; finish it open or closed. **Edit path** lets you drag points and handles on the selected layer; Alt-drag a point to create an outgoing handle. Each layer groups its objects and can rotate or scale around a chosen pivot. The Lasso tool draws a freeform selection; keep or hide that area as a non-destructive layer mask, then drag mask points to reshape it or remove the mask. Each layer supports one polygon mask, without feathering. Import a supported raster image as a layer. **Save** stores an editable project on the server; **Open** reopens or deletes it, and **Save a copy** resolves a concurrent edit. Export PNG or an editable `.paintroom` file to the device or shared files. SVG export is available for vector-only work without embedded images or eraser strokes. Use **Send to Cliproom** or export a PNG through shared files to animate it there. Projects embed imported images, which are limited to 20 MiB each; editable projects are limited to 32 MiB.
 
 **Send to VectorRoom** saves a file through the shared-file picker and provides a link to open it. Unclipped vector artwork with opaque layers is converted into editable VectorRoom paths, scaled to fit its 1000 × 700 artboard. Individual object opacity is preserved where the appearance can be represented faithfully; hidden layers are omitted and layer grouping is flattened. Photos, eraser strokes, partially transparent layers, clipped artwork and certain translucent fill-and-outline combinations cannot be faithfully converted into editable paths. For those projects you can choose to send a flattened PNG instead; the original remains editable in PaintRoom. The shared copy remains on the server until deleted. You can also save a PaintRoom project on the server and use **Fetch from PaintRoom** inside VectorRoom to add its editable objects to the current artwork without replacing it. Unsupported projects show an explanation and are not silently flattened.
+
+## MotionRoom
+
+Import a `.paintroom` or `.vectorroom` project from your device or Shared files, or choose **Send to MotionRoom** in PaintRoom or VectorRoom and save the editable artwork to Shared files. PaintRoom layers and individual VectorRoom objects appear separately. Select one, move the playhead, and add a keyframe or change its position, scale, rotation or opacity. Drag the selected layer on the preview to position it. Add another keyframe at a different time, choose the easing from the earlier keyframe to the next, and press **Play**. Use the diamonds or previous/next buttons to revisit keyframes; undo and redo cover animation edits.
+
+Save a `.motionroom` file locally or to Shared files to reopen the animation with its embedded source artwork. **Open artwork in its room** saves a separate editable copy for PaintRoom or VectorRoom; later changes to that copy are not automatically synced back into the animation. Export WebM or send the rendered video to Cliproom. Video has a solid background, no audio, and records in real time; keep the tab visible. A transparent PaintRoom canvas is rendered on white. Vector objects and PaintRoom layers are rendered to bitmaps for animation, so large scale-ups can soften details. The source paths, images, masks and strokes remain in the motion project.
+
+One artwork is supported per motion project. Projects are limited to 40 MiB, durations to 0.1–60 seconds and 10,000 keyframes. To bound memory, PaintRoom canvas pixels multiplied by the number of layers, or the combined pixel area of the rendered VectorRoom objects, cannot exceed 40 million. Animated SVG, path morphing, frame-by-frame drawing, audio and automatic source synchronization are not included. Real-time recording can drop frames on busy devices.
 
 ## PixelRoom
 

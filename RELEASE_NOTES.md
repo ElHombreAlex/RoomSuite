@@ -1,3 +1,9 @@
+## RoomSuite 3.2.0
+
+- **MotionRoom:** animate individual PaintRoom layers or VectorRoom objects with keyframed position, scale, rotation and opacity; choose easing, preview on the timeline, save an editable motion project and export WebM or send it to Cliproom.
+- PaintRoom, VectorRoom and Shared files can open supported artwork in MotionRoom. The motion project embeds an editable copy of the source; edits made in the original room do not sync automatically.
+- MotionRoom renders layers as bitmaps and records video in real time on a solid background, without audio. Duration, project size and rendered-layer memory are bounded; see the [MotionRoom guide](README.md#motionroom).
+
 ## RoomSuite 3.1.0
 
 - Fixes a timing bug that could collapse the creative grading section when changing a color wheel, curve or hue range. The panel remains open in both PixelRoom and Cliproom.

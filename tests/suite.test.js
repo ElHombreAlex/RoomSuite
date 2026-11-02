@@ -27,7 +27,7 @@ after(async () => {
   if (dir && relative.startsWith('roomsuite-test-') && !relative.includes(path.sep)) await fs.rm(dir, { recursive:true, force:true });
 });
 test('launcher and all rooms are served by one server', async () => {
-  for (const [route, title] of [['/','RoomSuite'],['/pixelroom/','Pixelroom'],['/cliproom/','Cliproom'],['/soundroom/','SoundRoom'],['/captureroom/','CaptureRoom'],['/vectorroom/','VectorRoom'],['/notesroom/','NotesRoom'],['/paintroom/','PaintRoom'],['/files/','Shared files']]) {
+  for (const [route, title] of [['/','RoomSuite'],['/pixelroom/','Pixelroom'],['/cliproom/','Cliproom'],['/soundroom/','SoundRoom'],['/captureroom/','CaptureRoom'],['/vectorroom/','VectorRoom'],['/motionroom/','MotionRoom'],['/notesroom/','NotesRoom'],['/paintroom/','PaintRoom'],['/files/','Shared files']]) {
     const response = await fetch(base + route); assert.equal(response.status, 200, route); assert.match(await response.text(), new RegExp(title));
   }
   const wasm = await fetch(base + '/pixelroom/vendor/vision/ort-wasm-simd-threaded.wasm', { method:'HEAD' });
