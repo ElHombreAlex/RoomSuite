@@ -90,3 +90,11 @@ test('project deletion checks origin and revision without deleting shared media'
   const outcome = await call('/api/projects/' + concurrentId);
   if (update.response.status === 200) assert.equal(outcome.body.revision,2); else assert.equal(outcome.response.status,404);
 });
+test('invalid new color fields are rejected before a project is saved',async()=>{
+  const id=crypto.randomUUID(),state={name:'Grade validation',assets:[{id:mediaId}],clips:[],titles:[]};
+  const save=()=>call('/api/projects/'+id,{method:'PUT',headers:{...writeHeaders,'Content-Type':'application/json'},body:JSON.stringify({baseRevision:0,state})});
+  state.clips=[{brightness:100,contrast:100,saturation:100,colorGrade:{temperature:101}}];assert.equal((await save()).response.status,400);
+  state.clips=[{keyframes:[{time:0,exposure_ev:3}]}];assert.equal((await save()).response.status,400);
+  assert.equal((await call('/api/projects/'+id)).response.status,404);
+  state.clips=[{brightness:100,contrast:100,saturation:100,colorGrade:{temperature:20}}];assert.equal((await save()).response.status,200);
+});

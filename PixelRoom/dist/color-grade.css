@@ -1,0 +1,15 @@
+.grade-box { display:grid; gap:10px; margin:12px 0 16px; font-size:12px; }
+.grade-box details { border:1px solid #dedbe8; border-radius:10px; padding:10px; }
+.grade-box summary { cursor:pointer; font-weight:700; color:#514475; }
+.grade-hint { color:#746d80; line-height:1.45; margin:8px 0; }
+.grade-slider { display:grid; gap:5px; margin:8px 0; }
+.grade-slider span { display:flex; justify-content:space-between; }
+.grade-slider input { width:100%; accent-color:#8a73d4; }
+.grade-box input:not([type=range]):not([type=checkbox]), .grade-box select { width:100%; min-width:0; margin:4px 0; padding:8px; border:1px solid #dcd8e7; border-radius:7px; background:#fff; color:#302a3a; }
+.grade-check { display:flex; align-items:center; gap:7px; }
+.grade-select { display:grid; gap:3px; }
+.grade-actions { display:flex; flex-wrap:wrap; gap:6px; margin:7px 0; }
+.grade-actions button { flex:1 1 auto; min-height:34px; border:1px solid #d8d1e8; border-radius:7px; padding:6px 8px; background:#f6f3fb; color:#514475; cursor:pointer; }
+.grade-actions button:hover { background:#eae3f8; }
+.grade-box :focus-visible { outline:2px solid #8064ca; outline-offset:2px; }
+.grade-wheel { display:block; width:128px; height:128px; max-width:100%; margin:10px auto; cursor:crosshair; touch-action:none; }

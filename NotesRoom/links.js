@@ -1,0 +1,7 @@
+'use strict';
+(function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory();else root.NotesLinks=factory();})(typeof globalThis==='object'?globalThis:this,function(){
+  const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,maxLinks=500;
+  function marker(id,label){if(typeof id!=='string'||!UUID.test(id))throw new Error('Invalid note ID.');const clean=String(label||'Note').replace(/[\[\]\r\n\x00-\x1f\x7f]/g,' ').trim().slice(0,160)||'Note';return '['+clean+'](/notesroom/?note='+id.toLowerCase()+')';}
+  function find(body){if(typeof body!=='string')throw new Error('Invalid note body.');const ids=new Set();let fenced=false,truncated=false;for(const raw of body.replace(/\r\n?/g,'\n').split('\n')){if(/^```/.test(raw)){fenced=!fenced;continue;}if(fenced)continue;const line=raw.replace(/`[^`]*`/g,''),pattern=/(?<!!)\[[^\]\n]{1,300}\]\((\/notesroom\/\?[^\s)]+)\)/g;for(const match of line.matchAll(pattern)){let url;try{url=new URL(match[1],'http://room.invalid');}catch{continue;}const id=url.searchParams.get('note');if(url.origin!=='http://room.invalid'||url.pathname!=='/notesroom/'||[...url.searchParams.keys()].length!==1||!UUID.test(id||''))continue;const key=id.toLowerCase();if(!ids.has(key)&&ids.size>=maxLinks){truncated=true;break;}ids.add(key);}if(truncated)break;}return {ids:[...ids],truncated};}
+  return {marker,find,maxLinks};
+});

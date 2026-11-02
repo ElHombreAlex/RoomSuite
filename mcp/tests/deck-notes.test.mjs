@@ -1,0 +1,20 @@
+import {test,before,after} from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {spawn} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+import {chromium} from 'playwright';
+import {Client} from '@modelcontextprotocol/client';
+import {StdioClientTransport} from '@modelcontextprotocol/client/stdio';
+const root=fileURLToPath(new URL('../../',import.meta.url)),port=24000+Math.floor(Math.random()*18000),base='http://127.0.0.1:'+port;
+let temp,work,server,client,browser,page;
+async function call(name,args={}){const result=await client.callTool({name,arguments:args},{timeout:180000});if(result.isError)throw new Error(result.content.map(item=>item.text).join(' '));return result.structuredContent;}
+before(async()=>{temp=await fs.mkdtemp(path.join(os.tmpdir(),'roomsuite-deck-notes-'));work=path.join(temp,'work');await fs.mkdir(work);server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,CLIPROOM_PORT:String(port),CLIPROOM_DATA:path.join(temp,'data')},stdio:['ignore','pipe','pipe']});await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Server timeout')),10000);server.once('error',reject);server.once('exit',code=>reject(Error('Server exited '+code)));server.stdout.on('data',data=>{if(String(data).includes('RoomSuite is running')){clearTimeout(timer);resolve();}});});client=new Client({name:'deck-notes-test',version:'1'});await client.connect(new StdioClientTransport({command:process.execPath,args:[path.join(root,'mcp/server.mjs')],env:{...process.env,ROOMSUITE_MCP_MODE:'full',ROOMSUITE_MCP_WORKSPACE:work,ROOMSUITE_MCP_URL:base},stderr:'pipe'}));browser=await chromium.launch({headless:true,...(process.env.ROOMSUITE_BROWSER_PATH?{executablePath:process.env.ROOMSUITE_BROWSER_PATH}:{})});page=await browser.newPage({viewport:{width:1440,height:1000}});});
+after(async()=>{if(browser)await browser.close();if(client)await client.close();if(server&&server.exitCode===null){server.kill();await new Promise(resolve=>server.once('exit',resolve));}if(temp){const actual=await fs.realpath(temp),parent=await fs.realpath(os.tmpdir());assert.equal(path.dirname(actual),parent);assert.ok(path.basename(actual).startsWith('roomsuite-deck-notes-'));await fs.rm(actual,{recursive:true,force:true});}});
+
+test('speaker notes survive human editing, MCP access and PowerPoint round-trip',async()=>{
+  let deck=await call('decksuite_create',{path:'talk.decksuite',title:'Talk',slides:[{title:'Opening',body:'Welcome',notes:'Agent notes'}]});const slideId=deck.state.slides[0].id;await page.goto(base+'/decksuite/?shared_file=talk.decksuite');await page.waitForFunction(()=>document.querySelector('#status').textContent.startsWith('Saved ·'));assert.equal(await page.locator('#slideNotes').inputValue(),'Agent notes');await page.locator('#slideNotes').fill('First point\n\nSecond point 😀');await page.locator('#saveFile').click();await page.waitForFunction(()=>document.querySelector('#status').textContent.startsWith('Saved ·'));deck=await call('decksuite_get',{path:'talk.decksuite'});assert.equal(deck.state.slides[0].notes,'First point\n\nSecond point 😀');await page.locator('#present').click();assert.doesNotMatch(await page.locator('#presentSlide').textContent(),/First point/);await page.locator('#presentDialog summary').click();assert.equal(await page.locator('#presentNotes').textContent(),'First point\n\nSecond point 😀');await page.locator('#presentDialog [data-close]').click();
+  await call('decksuite_export_pptx',{path:'talk.decksuite',output:'talk.pptx'});const imported=await call('decksuite_import_pptx',{path:'imported.decksuite',input:'talk.pptx'});assert.equal(imported.state.slides[0].notes,'First point\n\nSecond point 😀');const updated=await call('decksuite_update_slide',{path:'talk.decksuite',base_revision:deck.revision,slide_id:slideId,notes:'Updated by agent'});assert.equal(updated.state.slides[0].notes,'Updated by agent');
+});

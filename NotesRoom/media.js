@@ -1,0 +1,12 @@
+'use strict';
+(function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory();else root.NotesMedia=factory();})(typeof globalThis==='object'?globalThis:this,function(){
+  const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  function parseLine(line){
+    const image=/^!\[([^\]\r\n]{0,300})\]\((\/api\/workspace\/file\?[^\s)]+)\)(?:\s*\{width=(\d{1,4})\})?\s*$/.exec(line),voice=/^\[Voice note\]\((\/api\/workspace\/file\?[^\s)]+)\)\s*$/.exec(line);if(!image&&!voice)return null;const ref=image?image[2]:voice[1];let url;try{url=new URL(ref,'http://room.invalid');}catch{return null;}const keys=[...url.searchParams.keys()];if(url.origin!=='http://room.invalid'||url.pathname!=='/api/workspace/file'||!url.searchParams.has('path')||keys.some(key=>!['path','attachment'].includes(key))||keys.filter(key=>key==='path').length!==1||keys.filter(key=>key==='attachment').length>1)return null;const path=url.searchParams.get('path'),attachment=url.searchParams.get('attachment');if(!path||path.length>4096||(attachment&&!UUID.test(attachment)))return null;const type=image?'image':'audio';if(!(type==='image'?/\.(png|jpe?g|gif|webp)$/i:/\.(webm|ogg|mp3|wav|m4a|mp4)$/i).test(path))return null;return {type,path,attachment:attachment?attachment.toLowerCase():null,alt:image?image[1]:'Voice note',width:image?Math.max(80,Math.min(1000,Number(image[3])||420)):null,reference:ref};
+  }
+  function url(path,attachment,media=false){return '/api/workspace/'+(media?'media':'file')+'?'+new URLSearchParams({path,...(attachment?{attachment}:{})});}
+  function marker(type,path,attachment,label){if(!['image','audio'].includes(type)||typeof path!=='string'||!path||!UUID.test(attachment||''))throw new Error('Invalid note attachment.');const safe=String(label||'Image').replace(/[\[\]\r\n]/g,' ').slice(0,200),link=url(path,attachment);return type==='image'?'!['+safe+']('+link+'){width=420}':'[Voice note]('+link+')';}
+  function rewrite(line,attachment){const ref=parseLine(line);if(!ref||!UUID.test(attachment||''))throw new Error('Invalid note attachment reference.');return line.replace(ref.reference,url(ref.path,attachment));}
+  function references(body){const lines=body.replace(/\r\n?/g,'\n').split('\n'),items=[];let fenced=false;for(const [index,line] of lines.entries()){if(/^```/.test(line)){fenced=!fenced;continue;}if(fenced)continue;const ref=parseLine(line);if(ref)items.push({index,line,...ref});}return {lines,items};}
+  return {parseLine,url,marker,rewrite,references};
+});

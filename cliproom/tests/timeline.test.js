@@ -5,6 +5,27 @@ const timeline = require('../public/timeline.js');
 let next = 0;
 const id = () => `id-${++next}`;
 
+test('new project data is saved as version 5 while plain older timelines stay compatible', () => {
+  const base = timeline.empty(id);
+  assert.equal(timeline.migrate(base, id).version, 4);
+  const examples = [
+    {...base, clips:[{colorGrade:{}}]},
+    {...base, clips:[{keyframes:[{time:1,temperature:0}]}]},
+    {...base, clips:[{keyframes:[{time:1,grain:0}]}]},
+    {...base, audioClips:[{soundroom:{}}]},
+    {...base, titles:[{subtitle:true}]},
+    {...base, agentTimelineOps:[]}
+  ];
+  for (const old of examples) {
+    const upgraded = timeline.migrate(old, id);
+    assert.equal(upgraded.version, 5);
+    assert.equal(old.version, 4);
+    assert.deepEqual(timeline.migrate(upgraded, id), upgraded);
+  }
+  assert.throws(() => timeline.migrate({...base,clips:[{keyframes:[{time:0,creativeLook:{}}]}]},id), /version 5/);
+  assert.equal(timeline.migrate({...base,clips:[{keyframes:[{time:0,scale:1}]}]},id).version,4);
+});
+
 test('version 1 projects retain their timing and audible range', () => {
   const old = { version: 1, name: 'Old', aspect: '16:9', quality: '720p', assets: [], titles: [],
     clips: [{ id: 'a', in: 1, out: 4 }, { id: 'b', in: 0, out: 2 }],

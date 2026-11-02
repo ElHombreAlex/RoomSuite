@@ -14,7 +14,10 @@
   const active = (clip, time) => time + 1e-9 >= clip.start && time + 1e-9 < end(clip);
   const order = (a, b) => a.start - b.start || (a.transitionFrom === b.id ? 1 : b.transitionFrom === a.id ? -1 : 0);
   const sourceAt = (clip, time) => clip.in + limit(time - clip.start, 0, length(clip)) * rate(clip);
-  const animatedDefaults = { scale:1, x:50, y:50, opacity:1, rotation:0, brightness:100, contrast:100, saturation:100, volume:1 };
+  const gradeProperties = ['exposure_ev','temperature','tint','highlights','shadows','whites','blacks','vibrance'];
+  const effectProperties = ['grain','vignette','sharpen'];
+  const animatedDefaults = { scale:1, x:50, y:50, opacity:1, rotation:0, brightness:100, contrast:100, saturation:100, volume:1,
+    exposure_ev:0, temperature:0, tint:0, highlights:0, shadows:0, whites:0, blacks:0, vibrance:0,grain:0,vignette:0,sharpen:0 };
   // Keyframe times are source seconds, like clip.in/out. This keeps motion
   // attached to the media when a clip is moved, trimmed, split or retimed.
   function animatedValues(clip, timelineTime) {
@@ -23,7 +26,8 @@
       .filter(frame => frame && Number.isFinite(frame.time) && frame.time >= 0)
       .slice().sort((a, b) => a.time - b.time);
     for (const [property, fallback] of Object.entries(animatedDefaults)) {
-      const base = Number.isFinite(clip[property]) ? clip[property] : fallback;
+      const stored = gradeProperties.includes(property) ? clip.colorGrade?.[property] : effectProperties.includes(property)?clip.colorGrade?.look?.[property]:clip[property];
+      const base = Number.isFinite(stored) ? stored : fallback;
       let previousTime = 0, previousValue = base, value = base;
       for (const frame of frames) {
         if (!Number.isFinite(frame[property])) continue;
@@ -69,6 +73,15 @@
   }
   const videoDefaults = clip => ({ rate:1, brightness:100, contrast:100, saturation:100, rotation:0, flipX:false, ...clip });
   const audioDefaults = clip => ({ rate:1, ...clip });
+  function requiresV5(project) {
+    const clips = Array.isArray(project?.clips) ? project.clips : [];
+    const audio = Array.isArray(project?.audioClips) ? project.audioClips : [];
+    const titles = Array.isArray(project?.titles) ? project.titles : [];
+    return project?.agentTimelineOps !== undefined ||
+      clips.some(clip => clip?.colorGrade !== undefined || clip?.gradeMask !== undefined || (Array.isArray(clip?.keyframes) && clip.keyframes.some(frame => frame?.creativeLook !== undefined || [...gradeProperties,...effectProperties].some(key => frame?.[key] !== undefined)))) ||
+      audio.some(clip => clip?.soundroom !== undefined) || titles.some(title => title?.subtitle !== undefined);
+  }
+  function upgraded(project) { return project.version < 5 && requiresV5(project) ? { ...project, version:5 } : project; }
   function titleDefaults(title) {
     const y = title.position === 'top' ? 18 : title.position === 'bottom' ? 82 : 50;
     return { x:50, y, width:84, rotation:0, font:'sans-serif', bold:true, italic:false, ...title };
@@ -81,17 +94,18 @@
   }
   function migrate(old, id) {
     if (!old || typeof old !== 'object') throw new Error('This project is invalid.');
-    if (old.version === 2 || old.version === 3 || old.version === 4) {
+    if (old.version === 2 || old.version === 3 || old.version === 4 || old.version === 5) {
       if (!Array.isArray(old.videoTracks) || !old.videoTracks.length || !Array.isArray(old.audioTracks) || !old.audioTracks.length ||
           !Array.isArray(old.clips) || !Array.isArray(old.audioClips) || !Array.isArray(old.titles) || !Array.isArray(old.assets)) {
         throw new Error('This project is missing timeline data.');
       }
-      if (old.version === 4) return old;
-      if (old.version === 3) return { ...old, version:4 };
-      return { ...old, version:4,
+      if (old.version !== 5 && old.clips.some(clip => Array.isArray(clip?.keyframes) && clip.keyframes.some(frame => frame?.creativeLook !== undefined))) throw new Error('Creative look keyframes require a version 5 picture project.');
+      if (old.version === 4 || old.version === 5) return upgraded(old);
+      if (old.version === 3) return upgraded({ ...old, version:4 });
+      return upgraded({ ...old, version:4,
         videoTracks:old.videoTracks.map(track => ({ muted:false, hidden:false, ...track })),
         audioTracks:old.audioTracks.map(track => ({ muted:false, ...track })),
-        clips:old.clips.map(videoDefaults), audioClips:old.audioClips.map(audioDefaults), titles:old.titles.map(titleDefaults) };
+        clips:old.clips.map(videoDefaults), audioClips:old.audioClips.map(audioDefaults), titles:old.titles.map(titleDefaults) });
     }
     if (old.version !== 1 || !Array.isArray(old.clips) || !Array.isArray(old.assets) || !Array.isArray(old.titles)) throw new Error('This project version is not supported.');
     const project = empty(id); let cursor = 0;
@@ -106,7 +120,7 @@
       const musicOut = Math.min(old.music.out, old.music.in + Math.max(0, cursor - old.music.start));
       if (musicOut > old.music.in) project.audioClips = [audioDefaults({ ...old.music, out: musicOut, id: id(), trackId: project.audioTracks[0].id, fadeIn: 0, fadeOut: 0 })];
     }
-    return project;
+    return upgraded(project);
   }
   function duration(project) {
     return Math.max(0, ...project.clips.map(end), ...project.audioClips.map(end));
@@ -153,5 +167,5 @@
     for (const later of clips) if (later.transitionFrom === clip.id) later.transitionFrom = next.id;
     clips.push(next); return next;
   }
-  return { MIN_RATE, MAX_RATE, rate, rateForDuration, sourceAt, animatedValues, normalizeRotation, insideRotatedBox, createAudioClickGesture, empty, migrate, length, end, active, order, duration, envelope, visualOpacity, dissolve, split };
+  return { MIN_RATE, MAX_RATE, rate, rateForDuration, sourceAt, animatedValues, normalizeRotation, insideRotatedBox, createAudioClickGesture, empty, migrate, requiresV5, length, end, active, order, duration, envelope, visualOpacity, dissolve, split };
 });

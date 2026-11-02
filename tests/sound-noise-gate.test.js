@@ -1,0 +1,6 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),Gate=require('../SoundRoom/noise-gate.js');
+test('the linked noise gate reduces quiet sections without muting a loud linked channel',()=>{
+  const rate=8000,frames=rate*3,left=new Float32Array(frames),right=new Float32Array(frames);for(let i=0;i<frames;i++){left[i]=(i>=rate&&i<2*rate?.3:.01)*Math.sin(2*Math.PI*400*i/rate);right[i]=.001*Math.sin(2*Math.PI*400*i/rate);}const original=[left.slice(),right.slice()];Gate.apply([left,right],rate,-30,24);const rms=(channel,start,end)=>{let sum=0;for(let i=start;i<end;i++)sum+=channel[i]**2;return Math.sqrt(sum/(end-start));};assert.ok(rms(left,rate*.6,rate)<rms(original[0],rate*.6,rate)*.12);assert.ok(rms(left,rate*1.5,rate*2)>rms(original[0],rate*1.5,rate*2)*.98);assert.ok(rms(right,rate*1.5,rate*2)>rms(original[1],rate*1.5,rate*2)*.98);assert.ok(rms(left,rate*2.6,rate*3)<rms(original[0],rate*2.6,rate*3)*.2);
+});
+test('noise gate validates bounds and samples',()=>{assert.throws(()=>Gate.apply([new Float32Array(4),new Float32Array(3)],48000,-45,24),/supports/);assert.throws(()=>Gate.apply([new Float32Array([NaN])],48000,-45,24),/invalid sample/);assert.throws(()=>Gate.apply([new Float32Array(4)],48000,-90,24),/supports/);});

@@ -1,6 +1,6 @@
 'use strict';
 (function () {
-  const types = {png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',gif:'image/gif',avif:'image/avif',svg:'image/svg+xml',mp4:'video/mp4',webm:'video/webm',mov:'video/quicktime',mp3:'audio/mpeg',wav:'audio/wav',m4a:'audio/mp4',ogg:'audio/ogg',flac:'audio/flac',md:'text/markdown',txt:'text/plain',csv:'text/csv',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation',paintroom:'application/json',vectorroom:'application/json',pixelroom:'application/json',docsuite:'application/json',gridsuite:'application/json',decksuite:'application/json',plansuite:'application/json',json:'application/json'};
+  const types = {png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',gif:'image/gif',avif:'image/avif',svg:'image/svg+xml',mp4:'video/mp4',webm:'video/webm',mov:'video/quicktime',mp3:'audio/mpeg',wav:'audio/wav',m4a:'audio/mp4',ogg:'audio/ogg',flac:'audio/flac',md:'text/markdown',txt:'text/plain',csv:'text/csv',srt:'text/plain',vtt:'text/vtt',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation',paintroom:'application/json',vectorroom:'application/json',pixelroom:'application/json',soundroom:'application/json',capturescene:'application/json',decktemplate:'application/json',roomgrade:'application/json',docsuite:'application/json',gridsuite:'application/json',decksuite:'application/json',plansuite:'application/json',json:'application/json'};
   const typeOf = name => types[name.split('.').pop().toLowerCase()] || 'application/octet-stream';
   async function request(url, options = {}) {
     const headers = new Headers(options.headers || {}); if (options.method && options.method !== 'GET') headers.set('X-Cliproom-Request','1');
@@ -53,10 +53,10 @@
       dialog.showModal(); void show('');
     });
   }
-  async function fromQuery() {
+  async function fromQuery(options = {}) {
     const query=new URLSearchParams(location.search), target=query.get('shared_file'); if (!target) return null;
     query.delete('shared_file'); const next=query.toString();history.replaceState(null,'',location.pathname+(next?'?'+next:'')+location.hash);
-    return get(target);
+    return get(target, options);
   }
   window.RoomShared={request,list,get,put,typeOf,choose:accept=>picker({mode:'open',accept}),choosePath:accept=>picker({mode:'open',accept,returnPath:true}),chooseSavePath:filename=>picker({mode:'save',filename,selectOnly:true}),save:(blob,filename)=>picker({mode:'save',blob,filename}),fromQuery};
 })();

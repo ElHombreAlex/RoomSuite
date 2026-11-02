@@ -4,6 +4,25 @@
   const color=value=>typeof value==='string'&&/^#[0-9a-f]{6}$/i.test(value);
   const coord=n=>finite(n,-100000,100000);
   const validLabel=value=>typeof value==='string'&&value.length>0&&value.length<=160&&!/[\u0000-\u001f\u007f-\u009f]/.test(value);
+  const brushPresets=Object.freeze({round:Object.freeze({label:'Round',width:8,opacity:1}),fine:Object.freeze({label:'Fine liner',width:3,opacity:1}),marker:Object.freeze({label:'Marker',width:24,opacity:.4}),broad:Object.freeze({label:'Broad brush',width:48,opacity:.8})});
+  // Pressure is a normalized multiplier with a small minimum, so a very light
+  // touch remains visible. One filled outline avoids dark joins at low opacity.
+  function strokeOutline(points,width){
+    let d='';const radius=p=>width*(.05+.95*p.pressure)/2;
+    for(let i=0;i<points.length;i++){
+      const p=points[i],r=radius(p);d+=`M${p.x+r} ${p.y} A${r} ${r} 0 1 1 ${p.x-r} ${p.y} A${r} ${r} 0 1 1 ${p.x+r} ${p.y} Z `;
+      if(i){const a=points[i-1],dx=p.x-a.x,dy=p.y-a.y,len=Math.hypot(dx,dy);if(len>0){const nx=-dy/len,ny=dx/len,ra=radius(a);d+=`M${a.x-nx*ra} ${a.y-ny*ra} L${p.x-nx*r} ${p.y-ny*r} L${p.x+nx*r} ${p.y+ny*r} L${a.x+nx*ra} ${a.y+ny*ra} Z `;}}
+    }return d;
+  }
+  // Coordinates in stored strokes are layer-local. Reflect around canvas axes
+  // after applying the layer transform, then map back into the layer.
+  function mirrorStrokePoints(points,project,l,mode){
+    if(!['none','vertical','horizontal','both'].includes(mode))throw new Error('Invalid symmetry mode.');
+    const variants=mode==='both'?[[false,false],[true,false],[false,true],[true,true]]:mode==='vertical'?[[false,false],[true,false]]:mode==='horizontal'?[[false,false],[false,true]]:[[false,false]];
+    const px=l.pivotX??project.width/2,py=l.pivotY??project.height/2,a=l.rotation*Math.PI/180,c=Math.cos(a),s=Math.sin(a);
+    return variants.map(([mx,my])=>points.map(p=>{if(!mx&&!my)return {...p};const x=(p.x-px)*l.scale,y=(p.y-py)*l.scale,wx=px+l.x+x*c-y*s,wy=py+l.y+x*s+y*c,rx=(mx?project.width-wx:wx)-px-l.x,ry=(my?project.height-wy:wy)-py-l.y;return {...p,x:(rx*c+ry*s)/l.scale+px,y:(-rx*s+ry*c)/l.scale+py};}));
+  }
+  function maskPath(mask,width,height){const polygon=mask.points.map((p,i)=>(i?'L':'M')+p.x+' '+p.y).join(' ')+' Z';return (mask.mode==='hide'?`M0 0 H${width} V${height} H0 Z `:'')+polygon;}
   // Legacy projects have no object IDs. This migration is deterministic for a
   // given revision and doesn't alter saved data until the project is edited.
   function ensureIds(project){
@@ -16,10 +35,10 @@
   function validate(project){
     if(!project||project.format!=='paintroom-project'||project.version!==1||typeof project.name!=='string'||!project.name.trim()||project.name.length>160||!Number.isInteger(project.width)||!Number.isInteger(project.height)||project.width<1||project.width>4096||project.height<1||project.height>4096||!(project.background===null||color(project.background))||!Array.isArray(project.layers)||!project.layers.length||project.layers.length>100)throw new Error('Invalid PaintRoom project.');
     const ids=new Set(),objectIds=new Set();let total=0;
-    for(const l of project.layers){if(!l||typeof l.id!=='string'||!l.id||ids.has(l.id)||typeof l.name!=='string'||l.name.length>160||typeof l.visible!=='boolean'||!finite(l.opacity,0,1)||!coord(l.x)||!coord(l.y)||!finite(l.scale,.1,4)||!finite(l.rotation,-36000,36000)||!Array.isArray(l.objects)||(l.pivotX!==undefined&&!coord(l.pivotX))||(l.pivotY!==undefined&&!coord(l.pivotY)))throw new Error('Invalid PaintRoom layer.');ids.add(l.id);total+=l.objects.length;if(total>10000)throw new Error('Too many artwork elements.');
+    for(const l of project.layers){if(!l||typeof l.id!=='string'||!l.id||ids.has(l.id)||typeof l.name!=='string'||l.name.length>160||typeof l.visible!=='boolean'||!finite(l.opacity,0,1)||!coord(l.x)||!coord(l.y)||!finite(l.scale,.1,4)||!finite(l.rotation,-36000,36000)||!Array.isArray(l.objects)||(l.pivotX!==undefined&&!coord(l.pivotX))||(l.pivotY!==undefined&&!coord(l.pivotY)))throw new Error('Invalid PaintRoom layer.');if(l.mask!==undefined&&l.mask!==null&&(!['show','hide'].includes(l.mask.mode)||!Array.isArray(l.mask.points)||l.mask.points.length<3||l.mask.points.length>5000||l.mask.points.some(p=>!p||!coord(p.x)||!coord(p.y))))throw new Error('Invalid layer mask.');ids.add(l.id);total+=l.objects.length;if(total>10000)throw new Error('Too many artwork elements.');
       for(const o of l.objects){if(!o||!['stroke','rect','ellipse','line','image','path'].includes(o.type)||!finite(o.opacity,0,1))throw new Error('Invalid artwork element.');
         if(o.id!==undefined){if(!validLabel(o.id)||objectIds.has(o.id))throw new Error('Artwork object IDs must be unique within a project.');objectIds.add(o.id);}if(o.name!==undefined&&!validLabel(o.name))throw new Error('Invalid artwork object name.');
-        if(o.type==='stroke'){if(!Array.isArray(o.points)||!o.points.length||o.points.length>50000||o.points.some(p=>!p||!coord(p.x)||!coord(p.y))||!color(o.color)||!finite(o.width,.5,300)||typeof o.erase!=='boolean')throw new Error('Invalid brush stroke.');}
+        if(o.type==='stroke'){if(!Array.isArray(o.points)||!o.points.length||o.points.length>50000||o.points.some(p=>!p||!coord(p.x)||!coord(p.y)||(p.pressure!==undefined&&!finite(p.pressure,0,1)))||o.points.some(p=>(p.pressure!==undefined)!==(o.points[0].pressure!==undefined))||!color(o.color)||!finite(o.width,.5,300)||typeof o.erase!=='boolean')throw new Error('Invalid brush stroke. Pressure must be present on every point or none.');}
         else if(o.type==='path'){if(!Array.isArray(o.points)||o.points.length<2||o.points.length>5000||o.points.some(p=>!p||!['x','y','inX','inY','outX','outY'].every(k=>coord(p[k])))||typeof o.closed!=='boolean'||!color(o.color)||!finite(o.width,.5,300)||!(o.fill===null||color(o.fill))||(o.stroke!==undefined&&typeof o.stroke!=='boolean'))throw new Error('Invalid Bézier path.');}
         else if(o.type==='image'){if(typeof o.data!=='string'||!/^data:image\/(png|jpeg|webp|gif|avif);base64,[a-z0-9+/=]+$/i.test(o.data)||!coord(o.x)||!coord(o.y)||!finite(o.width,.1,16384)||!finite(o.height,.1,16384))throw new Error('Invalid embedded image.');}
         else if(!coord(o.x)||!coord(o.y)||!coord(o.x2)||!coord(o.y2)||!color(o.color)||!finite(o.width,.5,300)||!(o.fill===null||color(o.fill))||(o.stroke!==undefined&&typeof o.stroke!=='boolean')||(o.type==='line'&&o.stroke===false))throw new Error('Invalid shape.');
@@ -29,26 +48,27 @@
   const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
   function svg(project){validate(project);if(project.layers.some(l=>l.objects.some(o=>o.type==='image'||(o.type==='stroke'&&o.erase))))throw new Error('SVG export is available for artwork without photos or eraser strokes. Use PNG for this project.');
     const w=project.width,h=project.height,out=[`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`];if(project.background)out.push(`<rect width="${w}" height="${h}" fill="${project.background}"/>`);
-    for(const l of project.layers){if(!l.visible)continue;const px=l.pivotX??w/2,py=l.pivotY??h/2;out.push(`<g opacity="${l.opacity}" transform="translate(${px+l.x} ${py+l.y}) rotate(${l.rotation}) scale(${l.scale}) translate(${-px} ${-py})">`);
+    for(const [index,l] of project.layers.entries()){if(!l.visible)continue;const px=l.pivotX??w/2,py=l.pivotY??h/2;out.push(`<g opacity="${l.opacity}" transform="translate(${px+l.x} ${py+l.y}) rotate(${l.rotation}) scale(${l.scale}) translate(${-px} ${-py})"><defs><clipPath id="paint-surface-${index}" clipPathUnits="userSpaceOnUse"><rect width="${w}" height="${h}"/></clipPath></defs><g clip-path="url(#paint-surface-${index})">`);if(l.mask){out.push(`<defs><mask id="paint-mask-${index}" maskUnits="userSpaceOnUse" x="0" y="0" width="${w}" height="${h}"><path d="${maskPath(l.mask,w,h)}" fill="#ffffff" fill-rule="evenodd"/></mask></defs><g mask="url(#paint-mask-${index})">`);}
       for(const o of l.objects){const style=`opacity="${o.opacity}" stroke="${o.stroke===false?'none':esc(o.color)}" stroke-width="${o.width}" stroke-linecap="round" stroke-linejoin="round"`;
-        if(o.type==='stroke'){const d=o.points.map((p,i)=>(i?'L':'M')+p.x+' '+p.y).join(' ');out.push(`<path d="${d}${o.points.length===1?' l 0.001 0':''}" ${style} fill="none"/>`);}
+        if(o.type==='stroke'){if(o.points[0].pressure!==undefined)out.push(`<path d="${strokeOutline(o.points,o.width)}" opacity="${o.opacity}" stroke="none" fill="${esc(o.color)}"/>`);else{const d=o.points.map((p,i)=>(i?'L':'M')+p.x+' '+p.y).join(' ');out.push(`<path d="${d}${o.points.length===1?' l 0.001 0':''}" ${style} fill="none"/>`);}}
         else if(o.type==='path'){let d=`M${o.points[0].x} ${o.points[0].y}`;for(let i=1;i<o.points.length;i++){const a=o.points[i-1],b=o.points[i];d+=` C${a.outX} ${a.outY} ${b.inX} ${b.inY} ${b.x} ${b.y}`;}if(o.closed){const a=o.points.at(-1),b=o.points[0];d+=` C${a.outX} ${a.outY} ${b.inX} ${b.inY} ${b.x} ${b.y} Z`;}out.push(`<path d="${d}" ${style} fill="${o.fill||'none'}"/>`);}
         else if(o.type==='line')out.push(`<line x1="${o.x}" y1="${o.y}" x2="${o.x2}" y2="${o.y2}" ${style}/>`);
         else{const x=Math.min(o.x,o.x2),y=Math.min(o.y,o.y2),width=Math.abs(o.x2-o.x),height=Math.abs(o.y2-o.y),fill=o.fill||'none';
           if(o.type==='rect')out.push(`<rect x="${x}" y="${y}" width="${width}" height="${height}" ${style} fill="${fill}"/>`);
           else out.push(`<ellipse cx="${x+width/2}" cy="${y+height/2}" rx="${width/2}" ry="${height/2}" ${style} fill="${fill}"/>`);}}
-      out.push('</g>');}out.push('</svg>');return out.join('');}
+      if(l.mask)out.push('</g>');out.push('</g></g>');}out.push('</svg>');return out.join('');}
   function toVector(project){
     validate(project);const output=[],fit=Math.min(1000/project.width,700/project.height),ox=(1000-project.width*fit)/2,oy=(700-project.height*fit)/2;
     const base=(fill,stroke,width)=>({fillMode:fill?'solid':'none',fill:fill||'#000000',fill2:fill||'#000000',stroke:stroke||'#000000',strokeWidth:width});
     if(project.background)output.push({type:'rect',x:ox,y:oy,width:project.width*fit,height:project.height*fit,...base(project.background,null,0)});
-    for(const l of project.layers){if(!l.visible)continue;if(l.opacity!==1)throw new Error('VectorRoom transfer requires opaque layers. Use PNG for transparent layers.');
+    for(const l of project.layers){if(!l.visible)continue;if(l.mask)throw new Error('Masked layers require a flattened image for VectorRoom. Use PNG for this artwork.');if(l.opacity!==1)throw new Error('VectorRoom transfer requires opaque layers. Use PNG for transparent layers.');
       const angle=l.rotation*Math.PI/180,cos=Math.cos(angle),sin=Math.sin(angle);
       const px=l.pivotX??project.width/2,py=l.pivotY??project.height/2;
       const transform=p=>{const x=(p.x-px)*l.scale,y=(p.y-py)*l.scale;return {x:ox+fit*(px+l.x+x*cos-y*sin),y:oy+fit*(py+l.y+x*sin+y*cos)};};
       const node=(point,inHandle=point,outHandle=point)=>{const p=transform(point),i=transform(inHandle),o=transform(outHandle);return {x:p.x,y:p.y,inX:i.x,inY:i.y,outX:o.x,outY:o.y};};
       for(const item of l.objects){
         if(item.type==='image'||item.erase)throw new Error('VectorRoom transfer supports vector artwork without photos or eraser strokes. Use PNG for this artwork.');
+        if(item.type==='stroke'&&item.points[0].pressure!==undefined)throw new Error('Pressure-sensitive strokes require a flattened image for VectorRoom. Use PNG for this artwork.');
         if(item.opacity<1&&item.fill&&item.stroke!==false)throw new Error('A translucent object with both fill and outline cannot be transferred faithfully. Use PNG or remove its outline.');
         if(item.opacity<1&&item.type==='stroke'&&item.points.length>5000)throw new Error('A long translucent brush stroke cannot be transferred faithfully. Use PNG for this artwork.');
         const width=(item.stroke===false?0:item.width*l.scale*fit);if(width>100)throw new Error('A stroke is too wide for VectorRoom. Reduce the stroke or layer scale.');
@@ -71,5 +91,5 @@
     for(const item of output)for(const p of item.points||[])for(const value of Object.values(p))if(!coord(value))throw new Error('Artwork extends beyond VectorRoom’s coordinate range.');
     return {format:'vectorroom',version:1,objects:output};
   }
-  return {empty,layer,validate,ensureIds,svg,toVector};
+  return {empty,layer,validate,ensureIds,svg,toVector,brushPresets,strokeOutline,mirrorStrokePoints,maskPath};
 });

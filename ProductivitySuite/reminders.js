@@ -43,9 +43,9 @@ function createReminders({root,files,fetchImpl=fetch}) {
         let state;try{const stat=await fs.stat(file);if(stat.size>8*1024*1024)continue;state=Model.validate(JSON.parse(await fs.readFile(file,'utf8')),'plansuite');}catch{continue;}
         for(const event of state.events){
           if(event.remindMinutes===null)continue;
-          const start=Date.parse(event.start),due=start-event.remindMinutes*60000,key=crypto.createHash('sha256').update(event.id+'|'+event.start+'|'+event.remindMinutes).digest('hex');
+          const start=event.allDay?(()=>{const value=new Date(0);value.setFullYear(Number(event.start.slice(0,4)),Number(event.start.slice(5,7))-1,Number(event.start.slice(8,10)));value.setHours(0,0,0,0);return value.getTime();})():Date.parse(event.start),due=start-event.remindMinutes*60000,key=crypto.createHash('sha256').update(event.id+'|'+event.start+'|'+event.remindMinutes).digest('hex');
           if(ledger[key]||now<due||now>start+300000)continue;
-          try{await publish(c,event.title+'\nStarts: '+event.start.replace('.000Z','Z'));ledger[key]=now;changed=true;sent++;await write(ledgerFile,ledger);changed=false;lastError='';}
+          try{await publish(c,event.title+'\nStarts: '+(event.allDay?event.start.slice(0,10)+' (all day; server time zone)':event.start.replace('.000Z','Z')));ledger[key]=now;changed=true;sent++;await write(ledgerFile,ledger);changed=false;lastError='';}
           catch{lastError='Could not send a reminder to ntfy. RoomSuite will retry while the event is upcoming.';}
         }
       }

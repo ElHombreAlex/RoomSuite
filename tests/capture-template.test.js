@@ -1,0 +1,5 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),Template=require('../CaptureRoom/template.js');
+const base={format:'captureroom-scene-template',version:1,name:'Scene',sources:[{type:'text',name:'Title',visible:true,x:80,y:80,width:800,height:160,volume:1,text:'Hello',fontSize:60,color:'#ffffff',textBackdrop:false},{type:'camera',name:'Camera',visible:true,x:900,y:500,width:300,height:169,volume:1}]};
+test('scene templates retain static layout and device placeholders',()=>{const result=Template.parse(Template.serialize(base));assert.equal(result.sources[0].text,'Hello');assert.equal(result.sources[1].type,'camera');assert.equal(result.sources[1].width,300);});
+test('scene templates reject unknown fields, external images and device identifiers',()=>{for(const change of [v=>v.version=2,v=>v.sources[1].deviceId='secret',v=>v.sources[0].textBackdrop='yes',v=>v.sources.push({type:'image',name:'Bad',visible:true,x:0,y:0,width:20,height:20,volume:1,image:'https://example.com/a.png'})]){const value=structuredClone(base);change(value);assert.throws(()=>Template.validate(value));}});

@@ -19,7 +19,8 @@
 .timeline-content{grid-template-columns:76px minmax(600px,1fr);grid-template-rows:22px;grid-auto-rows:42px;min-width:700px}
 .ruler,.ruler-label{position:sticky;top:0;background:#fff;z-index:110}
 .track-label{min-width:0;gap:3px;justify-content:space-between;padding-right:7px;text-transform:uppercase}
-.track-label span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.track-label span,.track-label .track-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.track-label .track-name{min-width:0;flex:1;border:0;background:transparent;padding:0;color:inherit;text-align:left;text-transform:uppercase;font:inherit}
 .remove-track{border:0;background:none;color:#c5c2cb;padding:0 3px;font-size:15px;line-height:1}
 .remove-track:hover{color:#b56d71}
 .timeline-lane{height:42px}
@@ -29,6 +30,8 @@
 .timeline-clip small{margin-top:2px}
 .timeline-clip.audio-clip{background:linear-gradient(125deg,#f8dfd0,#fcf2eb);border-color:#e8cbb8;color:#a2725c}
 .timeline-clip.audio-clip small{color:#bc927b}
+.timeline-clip .audio-waveform{position:absolute;inset:3px 0;width:100%;height:26px;opacity:.45;pointer-events:none}
+.timeline-clip strong,.timeline-clip small{position:relative;pointer-events:none}
 .title-lane .overlay{top:8px}
 .playhead{z-index:100}
 .wide-tiny{width:100%;justify-content:center;margin:0 0 15px}
@@ -69,3 +72,4 @@
 .keyframe-marker{position:absolute;top:2px;width:7px;height:7px;background:#806fd9;border:1px solid white;transform:translateX(-50%) rotate(45deg);pointer-events:none;z-index:5}
 .keyframe-actions{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 12px}
 .project-item{padding:5px;gap:6px}.project-open{flex:1;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;border:0;border-radius:6px;background:transparent;padding:8px;color:inherit}.project-open:hover{background:#f0edfc}.project-open>span:first-child{min-width:0}.project-open strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.project-open-label{flex:none;font-size:10px;font-weight:700;color:#6e5cc0}.project-delete{flex:none;border:1px solid #ead5d7;background:#fff;color:#a04451;border-radius:6px;padding:8px 10px;font-size:10px;font-weight:700}.project-delete:hover{background:#fff3f4;border-color:#d9adb2}.projects-status{min-height:1.5em;color:#6d6477}
+.preview-controls{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}

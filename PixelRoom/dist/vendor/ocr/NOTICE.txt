@@ -7,3 +7,14 @@ bundle notices are provided in the corresponding .LICENSE.txt files.
 English trained data: @tesseract.js-data/eng 1.0.0 (package metadata lists MIT);
 the model is distributed for use with the open-source Tesseract project.
 No OCR resource is fetched from a third-party server by this application.
+
+French, Spanish and Italian trained data: tessdata_fast, pinned upstream commit
+87416418657359cb625c412a48b6e1d6d41c29bd, Apache License 2.0. The repository
+license is included as LICENSE. Models are gzipped for local loading.
+Source: https://github.com/tesseract-ocr/tessdata_fast
+Source Git blob SHA-1: fra d9e2b2160be0d1ca3b8f1bf2730fae476ef3b4a6;
+spa 72e901f13ca52cfe34cf239a368b9ed3c0ddaf26;
+ita edbffbe0e51892b240630b5eeabededa7e7c9c4f.
+Compressed SHA-256: fra 09ca4bc39c0764b4a7766204f64cf73b47720fad566b478ac46b2f364b1fff82;
+spa b088edf7bb347765cac72538cae5665d97dc442890341356c80f38efb70b3ce0;
+ita 3457bc424f0e02ffc01f4f82832613bffb1458b6d2ebdd87cfaa7741e4cf7670.

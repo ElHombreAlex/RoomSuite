@@ -9,6 +9,19 @@ const Grid=require('../ProductivitySuite/grid');
 const {createReminders}=require('../ProductivitySuite/reminders');
 const Calendar=require('../ProductivitySuite/calendar');
 
+test('project versions preserve older files and protect new productivity data',()=>{
+  const fresh=kind=>Model.empty(kind,()=> 'item-1');
+  for(const kind of ['docsuite','gridsuite','decksuite','plansuite'])assert.equal(Model.validate(fresh(kind),kind).version,1,kind);
+  const document=fresh('docsuite');document.changes=[];
+  const presentation=fresh('decksuite');presentation.slides[0].notes='Speaker note';
+  const spreadsheet=fresh('gridsuite');spreadsheet.cells.A1='=Sheet2!A1';
+  const calendar=fresh('plansuite');calendar.events=[{id:'event-1',title:'Meeting',start:'2024-01-01T09:00:00Z',end:'2024-01-01T10:00:00Z',description:'',remindMinutes:null,icalUid:'meeting@example.test'}];
+  for(const [kind,input] of [['docsuite',document],['decksuite',presentation],['gridsuite',spreadsheet],['plansuite',calendar]]){
+    const clean=Model.validate(input,kind);assert.equal(clean.version,2,kind);assert.equal(Model.validate(clean,kind).version,2,kind+' round trip');
+  }
+  const version2=fresh('docsuite');version2.version=2;assert.equal(Model.validate(version2,'docsuite').version,2);
+});
+
 test('spreadsheet formulas calculate references, ranges and report errors',()=>{
   const cells={A1:'2',A2:'3',A3:'label',B1:'=SUM(A1:A3)',B2:'=AVERAGE(A1:A2)',B3:'=MAX(A1:A2)*2',C1:'=1/0',C2:'=C3',C3:'=C2',C4:'=UNKNOWN(A1)'};
   const calculate=Grid.calculate(cells,100,26);
@@ -79,6 +92,11 @@ test('failed reminders retry and deleted events are not sent',async()=>{
     assert.equal((await reminders.tick(Date.parse('2026-05-01T09:46:00Z'))).sent,1);assert.equal(attempts,2);
     state.events=[{...state.events[0],id:'deleted'}];await fs.writeFile(file,JSON.stringify(state));await fs.unlink(file);assert.equal((await reminders.tick(Date.parse('2026-05-01T09:47:00Z'))).sent,0);assert.equal(attempts,2);
   }finally{const actual=await fs.realpath(tmp),parent=await fs.realpath(os.tmpdir());assert.equal(path.dirname(actual),parent);assert.ok(path.basename(actual).startsWith('roomsuite-reminder-test-'));await fs.rm(actual,{recursive:true,force:true});}
+});
+
+test('all-day reminders use midnight in the server time zone',async()=>{
+  const tmp=await fs.mkdtemp(path.join(os.tmpdir(),'roomsuite-reminder-test-')),files=path.join(tmp,'files');await fs.mkdir(files);
+  try{const calls=[],reminders=createReminders({root:tmp,files,fetchImpl:async(url,options)=>{calls.push(options.body);return new Response('ok',{status:200});}});await reminders.configure({enabled:true,server:'https://ntfy.example',topic:'private-topic'});const state=Model.empty('plansuite',()=> 'id');state.events=[{id:'holiday',title:'Holiday',start:'2026-05-01T00:00:00.000Z',end:'2026-05-02T00:00:00.000Z',allDay:true,description:'',remindMinutes:15}];await fs.writeFile(path.join(files,'calendar.plansuite'),JSON.stringify(state));const midnight=new Date(2026,4,1,0,0,0).getTime();assert.equal((await reminders.tick(midnight-16*60000)).sent,0);assert.equal((await reminders.tick(midnight-15*60000)).sent,1);assert.match(calls[0],/2026-05-01 \(all day; server time zone\)/);}finally{const actual=await fs.realpath(tmp),parent=await fs.realpath(os.tmpdir());assert.equal(path.dirname(actual),parent);assert.ok(path.basename(actual).startsWith('roomsuite-reminder-test-'));await fs.rm(actual,{recursive:true,force:true});}
 });
 
 test('v2.1 data survives validation and old files acquire safe defaults',()=>{

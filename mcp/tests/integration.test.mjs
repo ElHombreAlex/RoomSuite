@@ -221,7 +221,7 @@ test('project render endpoint accepts a saved project and returns video without 
       const video = document.createElement('video'); video.muted = true;
       const url = URL.createObjectURL(document.querySelector('#testVideo').files[0]);
       video.src = url;
-      await new Promise((resolve,reject) => { video.onloadedmetadata=resolve; video.onerror=reject; });
+      await new Promise((resolve,reject) => { video.onloadeddata=resolve; video.onerror=reject; });
       const canvas = document.createElement('canvas'); canvas.width=video.videoWidth; canvas.height=video.videoHeight;
       const ctx=canvas.getContext('2d');
       async function sample(time) {

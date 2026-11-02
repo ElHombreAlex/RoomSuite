@@ -31,10 +31,13 @@ async function uninstall(dir) { const names=await fs.readdir(dir).catch(()=>[]),
 async function scenario(temp, mode) {
   const dir=path.join(temp,mode+'-app'),data=path.join(temp,mode+'-data'),workspace=path.join(data,'agent-workspace'),portNumber=await port(),env={...process.env,ROOMSUITE_APP_DATA:data,CLIPROOM_PORT:String(portNumber),PLAYWRIGHT_BROWSERS_PATH:path.join(dir,'browsers')};
   delete env.ROOMSUITE_BROWSER_PATH;delete env.ROOMSUITE_MCP_MODE;delete env.ROOMSUITE_MCP_GROUPS;
+  // Never let an isolated installer test contact a calendar configured by the user.
+  for(const key of ['ROOMSUITE_CALDAV_URL','ROOMSUITE_CALDAV_USERNAME','ROOMSUITE_CALDAV_PASSWORD','ROOMSUITE_CALDAV_TOKEN'])delete env[key];
   const group='RoomSuite-Test-'+path.basename(temp);
   try {
     run(installer,['/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOICONS','/SP-',`/GROUP=${group}`,`/DIR=${dir}`,`/TYPE=${mode}`,`/LOG=${path.join(temp,mode+'-install.log')}`]);
     await fs.access(path.join(dir,'runtime','node.exe'));await fs.access(path.join(dir,'RoomSuite.exe'));await fs.access(path.join(dir,'PixelRoom','dist','index.html'));await fs.access(path.join(dir,'ProductivitySuite','vendor','exceljs.js'));await fs.access(path.join(dir,'ProductivitySuite','vendor','fflate.js'));
+    for(const file of ['RELEASE_NOTES.md','COLOR_GRADING.md','PERFORMANCE.md','UPGRADE_STATUS.md',path.join('workspace','caldav.js')])await fs.access(path.join(dir,file));
     const mcpDir=path.join(dir,'mcp','node_modules');
     if(mode==='typical')await assert.rejects(fs.stat(mcpDir),{code:'ENOENT'});else await fs.access(path.join(mcpDir,'playwright','package.json'));
     run(path.join(dir,'RoomSuite.exe'),['--self-test'],env);
@@ -59,6 +62,7 @@ async function scenario(temp, mode) {
         await client.connect(new StdioClientTransport({command:config.command,args:config.args,env:{...serverEnv,...config.env},stderr:'pipe'}));
         client.roomSuiteTools=new Set((await client.listTools()).tools.map(tool=>tool.name));assert.ok(client.roomSuiteTools.size<=25);assert.ok(client.roomSuiteTools.has('roomsuite_invoke'));
         const checked=await request(client,'roomsuite_check_deployment',{});assert.equal(checked.structuredContent.ok,true,checked.structuredContent.issues.join('; '));
+        const calendar=await request(client,'plansuite_create',{path:'installer.plansuite',title:'Installer calendar'});await assert.rejects(request(client,'plansuite_caldav_preview',{path:'installer.plansuite',base_revision:calendar.structuredContent.revision}),/not configured/i);
         await request(client,'docsuite_create',{path:'installer.docsuite',title:'Installer document',text:'Office compatibility'});const word=await request(client,'docsuite_export_docx',{path:'installer.docsuite',output:'installer.docx'});assert.ok(word.structuredContent.bytes>1000);
         await request(client,'gridsuite_create',{path:'installer.gridsuite',title:'Installer workbook',cells:{A1:'12',A2:'=A1*2'}});const excel=await request(client,'gridsuite_export_xlsx',{path:'installer.gridsuite',output:'installer.xlsx'});assert.ok(excel.structuredContent.bytes>1000);
         await request(client,'decksuite_create',{path:'installer.decksuite',title:'Installer presentation'});const powerpoint=await request(client,'decksuite_export_pptx',{path:'installer.decksuite',output:'installer.pptx'});assert.ok(powerpoint.structuredContent.bytes>1000);

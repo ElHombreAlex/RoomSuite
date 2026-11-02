@@ -44,6 +44,29 @@ test('shared files support folders, transfers and safe moves with limits', async
   assert.equal((await request('/api/workspace/delete','POST',{path:'one.bin'})).status,200);
   assert.equal((await request('/api/workspace/delete','POST',{path:'renamed.txt'})).status,200);
 });
+test('shared trash preserves files, rejects collisions and restores folders safely',async()=>{
+  assert.equal((await upload('keep.txt','important')).status,201);
+  const usageBefore=(await (await request('/api/workspace/info')).json()).used_bytes;
+  assert.equal((await request('/api/workspace/trash','POST',{path:'keep.txt'},{Origin:'https://other.invalid'})).status,403);
+  const trashed=await (await request('/api/workspace/trash','POST',{path:'keep.txt'})).json();assert.equal(trashed.originalPath,'keep.txt');
+  assert.equal((await request('/api/workspace/file?path=keep.txt')).status,404);
+  assert.ok((await (await request('/api/workspace/info')).json()).used_bytes>=usageBefore);
+  assert.ok((await (await request('/api/workspace/trash')).json()).entries.some(item=>item.id===trashed.id));
+  assert.equal((await upload('keep.txt','replacement')).status,201);
+  assert.equal((await request('/api/workspace/trash/restore','POST',{id:trashed.id})).status,409);
+  assert.equal((await request('/api/workspace/trash/restore','POST',{id:trashed.id,to:'../escape'})).status,400);
+  assert.equal((await request('/api/workspace/trash/restore','POST',{id:trashed.id,to:'recovered.txt'})).status,200);
+  assert.equal(await (await request('/api/workspace/file?path=recovered.txt')).text(),'important');
+  assert.equal(await (await request('/api/workspace/file?path=keep.txt')).text(),'replacement');
+  assert.equal((await request('/api/workspace/folder','POST',{path:'folder'})).status,201);assert.equal((await upload('folder/inside.txt','nested')).status,201);
+  assert.equal((await request('/api/workspace/trash','POST',{path:'folder'})).status,400);
+  const folder=await (await request('/api/workspace/trash','POST',{path:'folder',recursive:true})).json();
+  assert.equal((await request('/api/workspace/trash/restore','POST',{id:folder.id})).status,200);assert.equal(await (await request('/api/workspace/file?path=folder%2Finside.txt')).text(),'nested');
+  const discard=await (await request('/api/workspace/trash','POST',{path:'recovered.txt'})).json();assert.equal((await request('/api/workspace/trash/purge','POST',{id:discard.id})).status,200);
+  assert.equal((await request('/api/workspace/trash/restore','POST',{id:discard.id})).status,404);
+  assert.equal((await request('/api/workspace/trash/purge','POST',{id:'../escape'})).status,400);
+  await request('/api/workspace/delete','POST',{path:'keep.txt'});await request('/api/workspace/delete','POST',{path:'folder',recursive:true});
+});
 test('notes preserve revisions, Markdown, tags and folders', async () => {
   assert.equal((await request('/api/notes/folders','POST',{path:'Work/Projects'})).status,201);
   const created=await (await request('/api/notes','POST',{title:'A note',body:'# Hello\n**World**',folder:'Work/Projects',tags:['launch','ideas']})).json();

@@ -4,9 +4,14 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const timeline = require('./public/timeline.js');
+const colorGrade = require('./public/color-grade.js');
+const SoundSettings = require('./public/sound-settings.js');
+const ClipLookFrames = require('./public/look-keyframes.js');
+const ClipRegionGrade = require('./public/region-grade.js');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const propertyRanges = { scale:[.1,2], x:[-100,200], y:[-100,200], opacity:[0,1], rotation:[-36000,36000], brightness:[0,200], contrast:[0,200], saturation:[0,200], volume:[0,1] };
+const keyframeRanges = { ...propertyRanges, ...Object.fromEntries(colorGrade.advanced.map(key=>[key,colorGrade.specs[key]])),...colorGrade.Look.effectSpecs };
 function invalid(message) { return Object.assign(new Error(message), { status:400 }); }
 function finite(value, min, max) { return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max; }
 
@@ -29,10 +34,12 @@ async function validateProject(input, assetsDirectory) {
     assets.set(asset.id, asset);
   }
   const videoTracks = new Set(project.videoTracks.map(track => track?.id)), audioTracks = new Set(project.audioTracks.map(track => track?.id));
+  try{ClipRegionGrade.validateProject(project.clips);}catch(error){throw invalid(error.message);}
   for (const [items, tracks, kind] of [[project.clips,videoTracks,'video'],[project.audioClips,audioTracks,'audio']]) {
     for (const clip of items) {
       const asset = assets.get(clip?.assetId);
       if (!asset || !tracks.has(clip.trackId) || (kind === 'audio' ? asset.kind !== 'audio' : asset.kind === 'audio')) throw invalid('A clip references invalid media or a missing track.');
+      if(clip.soundroom!==undefined){if(kind!=='audio')throw invalid('SoundRoom source settings apply only to audio clips.');try{clip.soundroom=SoundSettings.link(clip.soundroom);}catch(error){throw invalid(error.message);}const source=assets.get(clip.soundroom.sourceAssetId);if(!source||source.kind!=='audio'||source.id===clip.assetId)throw invalid('The SoundRoom source and processed audio must be separate project audio files.');}
       if (!finite(clip.start,0,86400) || !finite(clip.in,0,86400) || !finite(clip.out,0,86400) || clip.out <= clip.in || !finite(clip.rate ?? 1,.5,4)) throw invalid('A clip has invalid timing.');
       if (asset.kind !== 'image' && clip.out > asset.duration + .05) throw invalid('A clip extends past its source media.');
       if (clip.keyframes !== undefined) {
@@ -41,10 +48,14 @@ async function validateProject(input, assetsDirectory) {
         for (const frame of clip.keyframes) {
           if (!frame || !finite(frame.time,0,86400) || times.has(frame.time)) throw invalid('Keyframe times must be unique non-negative source seconds.');
           times.add(frame.time);
-          for (const [key, range] of Object.entries(propertyRanges)) if (frame[key] !== undefined && !finite(frame[key],range[0],range[1])) throw invalid('Invalid keyframe ' + key + '.');
+          for (const [key, range] of Object.entries(keyframeRanges)) if (frame[key] !== undefined && !finite(frame[key],range[0],range[1])) throw invalid('Invalid keyframe ' + key + '.');
+          if(frame.creativeLook!==undefined){if(kind!=='video'||project.version!==5)throw invalid('Creative look keyframes require a version 5 picture project.');try{frame.creativeLook=ClipLookFrames.validate(frame.creativeLook);}catch(error){throw invalid(error.message);}}
+          if(kind==='audio'&&[...colorGrade.advanced,...Object.keys(colorGrade.Look.effectSpecs)].some(key=>frame[key]!==undefined))throw invalid('Color keyframes apply only to picture clips.');
         }
       }
       for (const [key, range] of Object.entries(propertyRanges)) if (clip[key] !== undefined && !finite(clip[key],range[0],range[1])) throw invalid('Invalid clip ' + key + '.');
+      if (kind === 'video') { try { colorGrade.readTarget(clip, 'clip');if(clip.gradeMask!==undefined)clip.gradeMask=ClipRegionGrade.validate(clip.gradeMask); } catch (error) { throw invalid(error.message); } }
+      else if(clip.gradeMask!==undefined)throw invalid('Color masks apply only to picture clips.');
     }
   }
   for (const title of project.titles) if (!title || typeof title.text !== 'string' || !finite(title.start,0,86400) || !finite(title.end,0,86400) || title.end <= title.start) throw invalid('Invalid title.');
@@ -131,7 +142,7 @@ async function renderProject(project, { port, suiteMode, signal, mode = 'realtim
         setState(state, uid(), 0);
         const { renderOffline } = await import('/offline-render.js');
         await renderOffline({ project:state, timeline:T, canvas,
-          prepareImages:async () => Promise.all(state.clips.filter(clip => asset(clip.assetId)?.kind === 'image').map(async clip => { const image = imageFor(asset(clip.assetId)); await image.decode(); })),
+          prepareImages:async () => {await prepareGradeMasks(state);await Promise.all(state.clips.filter(clip => asset(clip.assetId)?.kind === 'image').map(async clip => { const image = imageFor(asset(clip.assetId)); await image.decode(); }));},
           renderAt:(time, frames) => { currentTime = time; renderFrame(frames); } });
       }, project);
     } else {
