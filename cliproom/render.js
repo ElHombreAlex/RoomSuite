@@ -157,11 +157,12 @@ async function renderProject(project, { port, suiteMode, signal, mode = 'realtim
     }
     const download = mode === 'realtime' ? await Promise.race([downloadPromise,page.waitForFunction(()=>exportFailure,null,{timeout}).then(async value=>{throw new Error(await value.jsonValue());})]) : await downloadPromise;
     const failure = await download.failure(); if (failure) throw new Error('Render download failed: ' + failure);
+    const warning = mode === 'realtime' ? await page.evaluate(() => exportWarning) : '';
     dir = await fs.mkdtemp(path.join(temporaryRoot, 'roomsuite-render-'));
     const file = path.join(dir, 'cliproom.' + extension);
     await download.saveAs(file);
     const stat = await fs.stat(file); if (!stat.size) throw new Error('The renderer produced an empty video.');
-    return { file, bytes:stat.size, extension, mime:extension === 'mp4' ? 'video/mp4' : 'video/webm', cleanup };
+    return { file, bytes:stat.size, extension, mime:extension === 'mp4' ? 'video/mp4' : 'video/webm', warning, cleanup };
   } catch (error) {
     await cleanup();
     if (signal?.aborted) throw Object.assign(new Error('Render cancelled.'), { status:499 });

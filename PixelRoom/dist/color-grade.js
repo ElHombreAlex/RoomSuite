@@ -97,13 +97,20 @@
     const exposure = Math.pow(2, values.exposure_ev), temp = values.temperature / 100, tint = values.tint / 100;
     const red = exposure * (1 + temp * .18 + tint * .04), green = exposure * (1 - tint * .10), blue = exposure * (1 - temp * .18 + tint * .04);
     const hi = values.highlights * .45, sh = values.shadows * .45, wh = values.whites * .35, bl = values.blacks * .35, vib = values.vibrance / 100;
-    for (let i = 0; i < data.length; i += 4) {
+    // ImageData is already clamped to bytes; other callers may pass values
+    // outside that range and still need the original clamping behavior.
+    const bytePixels = data instanceof Uint8ClampedArray;
+    const primary = !bytePixels || values.exposure_ev !== 0 || temp !== 0 || tint !== 0 || hi !== 0 || sh !== 0 || wh !== 0 || bl !== 0 || vib !== 0;
+    const tonal = !bytePixels || hi !== 0 || sh !== 0 || wh !== 0 || bl !== 0;
+    if (primary) for (let i = 0; i < data.length; i += 4) {
       if (!data[i + 3]) continue;
       let r = data[i] * red, g = data[i + 1] * green, b = data[i + 2] * blue;
-      const l = clamp((.2126 * r + .7152 * g + .0722 * b) / 255, 0, 1);
-      const low = 1 - l, l2 = l * l, low2 = low * low;
-      const delta = hi * l2 + sh * low2 + wh * l2 * l2 + bl * low2 * low2;
-      r += delta; g += delta; b += delta;
+      if (tonal) {
+        const l = clamp((.2126 * r + .7152 * g + .0722 * b) / 255, 0, 1);
+        const low = 1 - l, l2 = l * l, low2 = low * low;
+        const delta = hi * l2 + sh * low2 + wh * l2 * l2 + bl * low2 * low2;
+        r += delta; g += delta; b += delta;
+      }
       const gray = .2126 * r + .7152 * g + .0722 * b;
       const chroma = clamp((Math.max(r, g, b) - Math.min(r, g, b)) / 255, 0, 1);
       const factor = 1 + vib * .75 * (1 - chroma);

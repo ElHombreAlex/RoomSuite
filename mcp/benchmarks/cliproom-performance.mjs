@@ -1,5 +1,5 @@
 // Reproducible desktop comparison, intentionally separate from pass/fail tests.
-// Usage: node mcp/benchmarks/cliproom-performance.mjs <2.5 checkout> [result.json]
+// Usage: node mcp/benchmarks/cliproom-performance.mjs <baseline checkout> [result.json]
 import { chromium } from 'playwright';
 import { Input, BufferSource, ALL_FORMATS } from 'mediabunny';
 import { spawn } from 'node:child_process';
@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const baseline = path.resolve(process.argv[2] || '');
-if (!process.argv[2]) throw new Error('Supply the path to the unmodified 2.5 checkout.');
+if (!process.argv[2]) throw new Error('Supply the path to the baseline checkout.');
 const resultFile = process.argv[3] ? path.resolve(process.argv[3]) : null;
 const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'roomsuite-performance-'));
 const servers = [];
@@ -134,8 +134,12 @@ try {
   const seed=24000+Math.floor(Math.random()*12000), current=await startServer(root,seed,'current'),old=await startServer(baseline,seed+1,'baseline');
   browser=await chromium.launch({headless:true,args:['--autoplay-policy=no-user-gesture-required'],...(process.env.ROOMSUITE_BROWSER_PATH?{executablePath:process.env.ROOMSUITE_BROWSER_PATH}:{})});
   const currentAssets=await fixtures(current),baselineAssets=await copyAssets(current,old,currentAssets);
-  const result={recordedAt:new Date().toISOString(),os:{platform:os.platform(),release:os.release(),arch:os.arch(),cpu:os.cpus()[0].model.trim(),logicalCores:os.cpus().length,memoryBytes:os.totalmem()},browser:browser.version(),fixtures:currentAssets.map(({width,height,fps,size})=>({width,height,fps,bytes:size})),scenario:'3.5 seconds, overlapping full-frame 1080p and scaled 720p VP8 videos; 1080p timeline; no audio',samples:{}};
-  for(const [name,base,assets,grade,fast] of [['baseline_neutral',old,baselineAssets,false,false],['current_neutral',current,currentAssets,false,false],['current_advanced',current,currentAssets,true,false],['current_advanced_fast_preview',current,currentAssets,true,true]]){
+  const baselineVersion=JSON.parse(await fs.readFile(path.join(baseline,'package.json'),'utf8')).version,currentVersion=JSON.parse(await fs.readFile(path.join(root,'package.json'),'utf8')).version;
+  const result={recordedAt:new Date().toISOString(),baselineVersion,currentVersion,os:{platform:os.platform(),release:os.release(),arch:os.arch(),cpu:os.cpus()[0].model.trim(),logicalCores:os.cpus().length,memoryBytes:os.totalmem()},browser:browser.version(),fixtures:currentAssets.map(({width,height,fps,size})=>({width,height,fps,bytes:size})),scenario:'3.5 seconds, overlapping full-frame 1080p and scaled 720p VP8 videos; 1080p timeline; no audio',samples:{}};
+  const scenarios=[['baseline_neutral',old,baselineAssets,false,false]];
+  if(Number.parseInt(baselineVersion,10)>=3)scenarios.push(['baseline_advanced',old,baselineAssets,true,false],['baseline_advanced_fast_preview',old,baselineAssets,true,true]);
+  scenarios.push(['current_neutral',current,currentAssets,false,false],['current_advanced',current,currentAssets,true,false],['current_advanced_fast_preview',current,currentAssets,true,true]);
+  for(const [name,base,assets,grade,fast] of scenarios){
     result.samples[name]=[];
     for(let i=0;i<2;i++){process.stderr.write(`Measuring ${name}, sample ${i+1}/2\n`);result.samples[name].push(await run(base,assets,grade,fast,i));}
   }

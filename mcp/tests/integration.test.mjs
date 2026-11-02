@@ -14,6 +14,7 @@ const mcp = fileURLToPath(new URL('../server.mjs', import.meta.url));
 const port = 24000 + Math.floor(Math.random() * 20000);
 const base = 'http://127.0.0.1:' + port;
 let temp, work, server, client, savedProjectId;
+const wireProgress = [];
 function tone() {
   const rate = 48000, frames = rate * 2, b = Buffer.alloc(44 + frames * 2);
   b.write('RIFF',0); b.writeUInt32LE(b.length - 8,4); b.write('WAVEfmt ',8); b.writeUInt32LE(16,16);
@@ -37,6 +38,10 @@ before(async () => {
     server.stdout.on('data', data => { if (String(data).includes('RoomSuite is running')) { clearTimeout(timer); resolve(); } });
   });
   const transport = new StdioClientTransport({ command:process.execPath, args:[mcp], env:{ ...process.env,ROOMSUITE_MCP_MODE:'full', ROOMSUITE_MCP_WORKSPACE:work, ROOMSUITE_MCP_URL:base }, stderr:'pipe' });
+  // The SDK can clear a request's callback before dispatching a queued progress
+  // notification when its response arrives in the same stdio chunk. Record the
+  // actual wire notifications independently to verify the server's sequence.
+  transport.onmessage = message => { if (message.method === 'notifications/progress') wireProgress.push(message.params.progress); };
   client = new Client({ name:'roomsuite-integration-test', version:'1.0.0' }); await client.connect(transport);
 });
 after(async () => {
@@ -110,12 +115,14 @@ test('Cliproom rejects duration fields that would otherwise be ignored',async()=
   assert.deepEqual((await fs.readdir(path.join(temp,'data','assets'))).sort(),before);
 });
 test('CaptureRoom records a prepared visual scene', async () => {
+  wireProgress.length = 0;
   const updates = [];
   const response = await client.callTool({ name:'captureroom_record_scene', arguments:{ output:'scene', image:'art.png', text:'Hello', duration:2 } }, { timeout:180000, onprogress:update => updates.push(update.progress) });
   if (response.isError) throw new Error(response.content[0].text);
   const result = response.structuredContent || JSON.parse(response.content[0].text);
   assert.ok(result.bytes > 1000); assert.match(result.path, /\.(webm|mp4)$/);
-  assert.equal(updates[0],0); assert.equal(updates[updates.length - 1],100); assert.ok(updates.every((n,i) => i === 0 || n > updates[i-1]));
+  assert.equal(wireProgress[0],0); assert.equal(wireProgress[wireProgress.length - 1],100); assert.ok(wireProgress.every((n,i) => i === 0 || n > wireProgress[i-1]));
+  assert.equal(updates[0],0); assert.ok(updates.every((n,i) => i === 0 || n > updates[i-1]));
 });
 test('Cliproom renders a timeline and saves an editable project', async () => {
   const result = await call('cliproom_render', {

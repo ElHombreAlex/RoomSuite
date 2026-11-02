@@ -37,8 +37,15 @@
     else { items.push(item); saveLibrary(items); selection = 'u:' + (items.length - 1); }
     search = ''; openDetails.library = true; return item;
   }
+  function capture(root) {
+    if (!root) return;
+    // A details element changes synchronously, but its toggle event is queued.
+    for (const detail of root.querySelectorAll('[data-grade-details]')) openDetails[detail.dataset.gradeDetails] = detail.open;
+  }
   function mount(root, adapter) {
     if (!root) return;
+    // Capture before replacing the panel, even if toggle has not fired yet.
+    capture(root);
     const grade = adapter.get(), user = readLibrary();
     const all = [...G.builtins.map((item, index) => ({ id:'b:' + index, item, kind:'Built in' })), ...user.map((item, index) => ({ id:'u:' + index, item, kind:'Saved' }))];
     const visible = all.filter(({item}) => (item.name + ' ' + item.tags.join(' ')).toLowerCase().includes(search.toLowerCase()));
@@ -85,7 +92,7 @@
     wheelCanvas.addEventListener('pointermove',event=>{if(draggingWheel)changeWheel(event,false);});
     wheelCanvas.addEventListener('pointerup',event=>{if(draggingWheel){draggingWheel=false;changeWheel(event,true);}});
     wheelCanvas.addEventListener('pointercancel',event=>{if(draggingWheel){draggingWheel=false;changeWheel(event,true);}});
-    for (const detail of root.querySelectorAll('[data-grade-details]')) detail.addEventListener('toggle', () => { openDetails[detail.dataset.gradeDetails]=detail.open; });
+    for (const detail of root.querySelectorAll('[data-grade-details]')) detail.addEventListener('toggle', () => { if (root.isConnected && root.contains(detail)) openDetails[detail.dataset.gradeDetails]=detail.open; });
     const selectedPreset = () => all.find(entry => entry.id === selection)?.item;
     function updateInput(event, commit) {
       const input = event.target.closest('[data-grade-key]'); if (!input) return;
@@ -110,7 +117,7 @@
       if (event.target.matches('[data-grade-key], [data-grade-library], [data-grade-compare], [data-look-key], [data-look-select]')) event.stopPropagation();
       if (event.target.matches('[data-grade-key]')) updateInput(event, true);
       if (event.target.matches('[data-look-key]')) updateLook(event,true);
-      if(event.target.matches('[data-look-select]')){if(event.target.dataset.lookSelect==='curve')curveChannel=event.target.value;else if(event.target.dataset.lookSelect==='hsl')hslRange=event.target.value;else wheelRegion=event.target.value;mount(root,adapter);}
+      if(event.target.matches('[data-look-select]')){const kind=event.target.dataset.lookSelect,focused=document.activeElement===event.target;if(kind==='curve')curveChannel=event.target.value;else if(kind==='hsl')hslRange=event.target.value;else wheelRegion=event.target.value;mount(root,adapter);if(focused)[...root.querySelectorAll('[data-look-select]')].find(input=>input.dataset.lookSelect===kind)?.focus({preventScroll:true});}
       if (event.target.matches('[data-grade-library]')) selection = event.target.value;
       if (event.target.matches('[data-grade-compare]')) adapter.compare(event.target.value);
     };
@@ -154,5 +161,5 @@
       } catch (error) { adapter.notify(error.message || 'Could not use this preset.'); }
     };
   }
-  window.RoomGradeUI = { mount, importFile };
+  window.RoomGradeUI = { mount, capture, importFile };
 })();

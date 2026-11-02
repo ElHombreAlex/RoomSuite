@@ -497,8 +497,8 @@ export async function renderVideo(args, signal, progress) {
   if (args.include_audio !== undefined) body.include_audio = args.include_audio;
   if (outputFormat !== 'auto') body.output_format = outputFormat;
   const result = await renderProjectRequest(body, args.output, signal);
-  const warnings = entries.some(entry => entry.keyframes?.some(frame => frame.time !== undefined)) ?
-    ['Legacy keyframe time means source-media seconds, not timeline seconds. Prefer timeline_time or source_time.'] : [];
+  const warnings = [...(entries.some(entry => entry.keyframes?.some(frame => frame.time !== undefined)) ?
+    ['Legacy keyframe time means source-media seconds, not timeline seconds. Prefer timeline_time or source_time.'] : []),...(result.warnings||[])];
   return { ...result, operation:'render_video', duration_seconds:assembled.duration, project, warnings, assets:[...requested.map(input=>({input,asset_id:assetFor.get(fileFor.get(input)).id})),...existing.map(asset=>({asset_id:asset.id,reused:true}))], note:'Imported media remains in the Cliproom server library.' };
 }
 
@@ -532,6 +532,7 @@ async function renderProjectRequest(body, requestedOutput, signal) {
     });
     if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'Render failed (' + response.status + ').'); }
     const actualMode = response.headers.get('x-cliproom-render-mode') || 'realtime';
+    const frameWarning = response.headers.get('x-cliproom-render-warning') === 'slow-frames' ? 'Real-time rendering was too slow and the video may be missing frames. Try offline rendering for supported projects.' : '';
     if (body.render_mode === 'offline' && actualMode !== 'offline') { await response.body?.cancel(); throw new Error('The RoomSuite server does not support offline rendering. Update and restart the server.'); }
     if (body.include_audio === false && response.headers.get('x-cliproom-audio-included') !== 'false') { await response.body?.cancel(); throw new Error('The RoomSuite server did not confirm a silent export. Update and restart the server.'); }
     const type = (response.headers.get('content-type') || '').split(';')[0];
@@ -542,7 +543,7 @@ async function renderProjectRequest(body, requestedOutput, signal) {
     try { output = await outputPath(outputWithExtension(requestedOutput, ext), [ext]); }
     catch (error) { await response.body?.cancel(); throw error; }
     const saved = await saveResponse(response, output, type, controller.signal);
-    return { ...saved, room:'Cliproom', operation:'render_project', project_id:body.project_id || null, render_mode:actualMode };
+    return { ...saved, room:'Cliproom', operation:'render_project', project_id:body.project_id || null, render_mode:actualMode, ...(frameWarning?{warnings:[frameWarning]}:{}) };
   } catch (error) {
     if (controller.signal.aborted) throw new Error(signal?.aborted ? 'The request was cancelled.' : 'The render timed out.');
     throw error;

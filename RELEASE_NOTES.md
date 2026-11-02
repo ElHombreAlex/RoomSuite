@@ -1,3 +1,13 @@
+## RoomSuite 3.1.0
+
+- Fixes a timing bug that could collapse the creative grading section when changing a color wheel, curve or hue range. The panel remains open in both PixelRoom and Cliproom.
+- Speeds up the shared CPU color renderer while preserving the v3.0 pixel output in the compatibility fixtures. In one 1080p two-track test, a 105-frame export fell from 36.01 to 23.45 seconds. Results vary by device and project; [performance notes](PERFORMANCE.md) include the full comparison.
+- Warns in the editor and MCP results when real-time rendering completes substantially fewer draws than its 30 fps target. This is not a count of encoded frames and cannot detect every dropped frame. Demanding full-resolution grades can still drop frames; use **Every frame** export for supported projects when consistent frames matter.
+- Prefers VP8 for real-time WebM when the browser reports support, otherwise trying VP9, and gives recovery guidance if a browser produces an empty recording. This fixes the short 1080p export exercised by the macOS CI check.
+- Runs the complete MCP suite in Windows and Linux CI, and adds advanced grading coverage to both Mac jobs. Some tests need optional speech or CalDAV fixtures; [the MCP guide](mcp/README.md#verify) lists them.
+
+Physical mobile and low-end devices were not available for this comparison. Existing v3 limits, including static video masks, the iCalendar subset and the every-frame export requirements, remain as described below.
+
 ## RoomSuite 3.0.0
 
 RoomSuite 3 expands the creative and productivity rooms while keeping projects and processing local. Existing 2.5 projects remain usable; back up your RoomSuite data before updating.

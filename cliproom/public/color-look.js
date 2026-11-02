@@ -48,7 +48,7 @@
     const curves={};if(curvesActive)for(const channel of channels){const source=look.curves[channel],table=new Float32Array(1025);for(let i=0;i<table.length;i++){const x=i/1024*4,index=Math.min(3,Math.floor(x)),fraction=x-index;table[i]=source[index]+(source[index+1]-source[index])*fraction;}curves[channel]=table;}
     const wheels=regions.map(region=>{const {color,amount}=look.wheels[region],r=parseInt(color.slice(1,3),16),g=parseInt(color.slice(3,5),16),b=parseInt(color.slice(5,7),16),gray=.2126*r+.7152*g+.0722*b;return [(r-gray)*amount/400,(g-gray)*amount/400,(b-gray)*amount/400];});
     let compiledLut=null;if(look.lut){compiledLut=typedLutCache.get(look.lut);if(!compiledLut){compiledLut={...look.lut,data:Float32Array.from(look.lut.data)};typedLutCache.set(look.lut,compiledLut);}}
-    const result={curvesActive,hslActive,wheelsActive,curves,wheels,lut:compiledLut,active:curvesActive||hslActive||wheelsActive||!!look.lut||!!look.grain||!!look.vignette||!!look.sharpen};compiledCache.set(look,result);return result;
+    const result={curvesActive,hslActive,wheelsActive,curves,hsl:ranges.map(range=>look.hsl[range]),wheels,lut:compiledLut,active:curvesActive||hslActive||wheelsActive||!!look.lut||!!look.grain||!!look.vignette||!!look.sharpen};compiledCache.set(look,result);return result;
   }
   function active(look){return compile(look||neutral).active;}
   function hasSettings(look){look=look||neutral;return active(look)||look.grain_seed!==1||regions.some(region=>look.wheels[region].color!=='#ffffff');}
@@ -77,23 +77,57 @@
   function apply(data,width,height,look,mix=1){
     if(!look||!mix)return data;const c=compile(look);if(!c.active)return data;
     if(!Number.isInteger(width)||!Number.isInteger(height)||width<1||height<1||width*height*4!==data.length)throw new Error('Creative effects require matching image dimensions.');
-    const out=[0,0,0],curve=(table,value)=>table[Math.round(clamp(value/255,0,1)*1024)]*255;
-    for(let i=0;i<data.length;i+=4){
-      if(!data[i+3])continue;let r=data[i],g=data[i+1],b=data[i+2];
+    const out=[0,0,0],curve=(table,value)=>table[Math.round(clamp(value/255,0,1)*1024)]*255;let opaque=!!look.sharpen;
+    for(let y=0,i=0;y<height;y++)for(let x=0;x<width;x++,i+=4){
+      const alpha=data[i+3];if(opaque&&alpha!==255)opaque=false;if(!alpha)continue;let r=data[i],g=data[i+1],b=data[i+2];
       if(c.curvesActive){r+=mix*(curve(c.curves.master,r)-r);g+=mix*(curve(c.curves.master,g)-g);b+=mix*(curve(c.curves.master,b)-b);r+=mix*(curve(c.curves.red,r)-r);g+=mix*(curve(c.curves.green,g)-g);b+=mix*(curve(c.curves.blue,b)-b);}
       if(c.hslActive){
         let rr=clamp(r/255,0,1),gg=clamp(g/255,0,1),bb=clamp(b/255,0,1),max=Math.max(rr,gg,bb),min=Math.min(rr,gg,bb),delta=max-min,l=(max+min)/2;
-        if(delta>1e-8){let h=max===rr?((gg-bb)/delta+(gg<bb?6:0)):max===gg?(bb-rr)/delta+2:(rr-gg)/delta+4;const sector=Math.min(5,Math.floor(h)),fraction=h-sector,first=look.hsl[ranges[sector]],second=look.hsl[ranges[(sector+1)%6]],hue=first.hue*(1-fraction)+second.hue*fraction,saturation=first.saturation*(1-fraction)+second.saturation*fraction,luminance=first.luminance*(1-fraction)+second.luminance*fraction;let sat=delta/(1-Math.abs(2*l-1));
+        if(delta>1e-8){let h=max===rr?((gg-bb)/delta+(gg<bb?6:0)):max===gg?(bb-rr)/delta+2:(rr-gg)/delta+4;const sector=Math.min(5,Math.floor(h)),fraction=h-sector,first=c.hsl[sector],second=c.hsl[(sector+1)%6],hue=first.hue*(1-fraction)+second.hue*fraction,saturation=first.saturation*(1-fraction)+second.saturation*fraction,luminance=first.luminance*(1-fraction)+second.luminance*fraction;let sat=delta/(1-Math.abs(2*l-1));
           h=h/6+hue*mix/360;if(h<0)h+=1;else if(h>=1)h-=1;sat=clamp(sat*(1+saturation/100*mix),0,1);l=clamp(l+luminance/100*.5*mix,0,1);
           const q=l<.5?l*(1+sat):l+sat-l*sat,p=2*l-q;r=hueChannel(p,q,h+1/3)*255;g=hueChannel(p,q,h)*255;b=hueChannel(p,q,h-1/3)*255;
         }
       }
       if(c.wheelsActive){const l=clamp((.2126*r+.7152*g+.0722*b)/255,0,1),shadow=(1-l)*(1-l),middle=4*l*(1-l),highlight=l*l,w=c.wheels;r+=(w[0][0]*shadow+w[1][0]*middle+w[2][0]*highlight)*mix;g+=(w[0][1]*shadow+w[1][1]*middle+w[2][1]*highlight)*mix;b+=(w[0][2]*shadow+w[1][2]*middle+w[2][2]*highlight)*mix;}
       if(c.lut){sampleLut(c.lut,r/255,g/255,b/255,out);r+=mix*(out[0]*255-r);g+=mix*(out[1]*255-g);b+=mix*(out[2]*255-b);}
-      if(look.grain||look.vignette){const pixel=i/4,x=pixel%width,y=Math.floor(pixel/width);if(look.vignette){const dx=(x+.5)/width*2-1,dy=(y+.5)/height*2-1,factor=1-look.vignette/100*.65*(dx*dx+dy*dy)/2*mix;r*=factor;g*=factor;b*=factor;}if(look.grain){let hash=Math.imul(x+look.grain_seed,374761393)^Math.imul(y+look.grain_seed,668265263);hash=Math.imul(hash^(hash>>>13),1274126177);const noise=((hash>>>0)/4294967295-.5)*look.grain*.6*mix;r+=noise;g+=noise;b+=noise;}}
+      if(look.grain||look.vignette){if(look.vignette){const dx=(x+.5)/width*2-1,dy=(y+.5)/height*2-1,factor=1-look.vignette/100*.65*(dx*dx+dy*dy)/2*mix;r*=factor;g*=factor;b*=factor;}if(look.grain){let hash=Math.imul(x+look.grain_seed,374761393)^Math.imul(y+look.grain_seed,668265263);hash=Math.imul(hash^(hash>>>13),1274126177);const noise=((hash>>>0)/4294967295-.5)*look.grain*.6*mix;r+=noise;g+=noise;b+=noise;}}
       data[i]=clamp(r,0,255);data[i+1]=clamp(g,0,255);data[i+2]=clamp(b,0,255);
     }
-    if(look.sharpen){const source=new Uint8ClampedArray(data),amount=look.sharpen/100*mix;for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*4;if(!source[i+3])continue;const left=x>0?i-4:-1,right=x+1<width?i+4:-1,top=y>0?i-width*4:-1,bottom=y+1<height?i+width*4:-1;for(let ch=0;ch<3;ch++){let sum=0,count=0;if(left>=0&&source[left+3]){sum+=source[left+ch];count++;}if(right>=0&&source[right+3]){sum+=source[right+ch];count++;}if(top>=0&&source[top+3]){sum+=source[top+ch];count++;}if(bottom>=0&&source[bottom+3]){sum+=source[bottom+ch];count++;}if(count)data[i+ch]=clamp(source[i+ch]+amount*(source[i+ch]-sum/count),0,255);}}}
+    if(look.sharpen){
+      const source=new Uint8ClampedArray(data),amount=look.sharpen/100*mix;
+      if(opaque&&width>2&&height>2){
+        const stride=width*4;
+        // Opaque video is the common case. Interior pixels always have four
+        // neighbors; use the general edge path only for the outer border.
+        for(let y=1;y<height-1;y++)for(let x=1,i=y*stride+4;x<width-1;x++,i+=4){
+          const l=i-4,r=i+4,t=i-stride,b=i+stride;
+          const red=source[l]+source[r]+source[t]+source[b],green=source[l+1]+source[r+1]+source[t+1]+source[b+1],blue=source[l+2]+source[r+2]+source[t+2]+source[b+2];
+          data[i]=clamp(source[i]+amount*(source[i]-red/4),0,255);data[i+1]=clamp(source[i+1]+amount*(source[i+1]-green/4),0,255);data[i+2]=clamp(source[i+2]+amount*(source[i+2]-blue/4),0,255);
+        }
+        const edge=(x,y)=>{
+          const i=(y*width+x)*4,left=x>0?i-4:-1,right=x+1<width?i+4:-1,top=y>0?i-stride:-1,bottom=y+1<height?i+stride:-1;
+          let r=0,g=0,b=0,count=0;
+          if(left>=0){r+=source[left];g+=source[left+1];b+=source[left+2];count++;}
+          if(right>=0){r+=source[right];g+=source[right+1];b+=source[right+2];count++;}
+          if(top>=0){r+=source[top];g+=source[top+1];b+=source[top+2];count++;}
+          if(bottom>=0){r+=source[bottom];g+=source[bottom+1];b+=source[bottom+2];count++;}
+          data[i]=clamp(source[i]+amount*(source[i]-r/count),0,255);data[i+1]=clamp(source[i+1]+amount*(source[i+1]-g/count),0,255);data[i+2]=clamp(source[i+2]+amount*(source[i+2]-b/count),0,255);
+        };
+        for(let x=0;x<width;x++){edge(x,0);edge(x,height-1);}
+        for(let y=1;y<height-1;y++){edge(0,y);edge(width-1,y);}
+        return data;
+      }
+      for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+        const i=(y*width+x)*4;if(!source[i+3])continue;
+        const left=x>0?i-4:-1,right=x+1<width?i+4:-1,top=y>0?i-width*4:-1,bottom=y+1<height?i+width*4:-1;
+        let r=0,g=0,b=0,count=0;
+        if(left>=0&&source[left+3]){r+=source[left];g+=source[left+1];b+=source[left+2];count++;}
+        if(right>=0&&source[right+3]){r+=source[right];g+=source[right+1];b+=source[right+2];count++;}
+        if(top>=0&&source[top+3]){r+=source[top];g+=source[top+1];b+=source[top+2];count++;}
+        if(bottom>=0&&source[bottom+3]){r+=source[bottom];g+=source[bottom+1];b+=source[bottom+2];count++;}
+        if(count){data[i]=clamp(source[i]+amount*(source[i]-r/count),0,255);data[i+1]=clamp(source[i+1]+amount*(source[i+1]-g/count),0,255);data[i+2]=clamp(source[i+2]+amount*(source[i+2]-b/count),0,255);}
+      }
+    }
     return data;
   }
   return {channels,ranges,regions,effectSpecs,maxCubeBytes,maxCubeSize,neutral,validate,active,hasSettings,parseCube,apply};

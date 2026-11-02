@@ -195,6 +195,7 @@ async function route(req, res) {
       res.setHeader('Content-Type', output.mime); res.setHeader('Content-Length', output.bytes);
       res.setHeader('X-Cliproom-Render-Mode', mode);
       res.setHeader('X-Cliproom-Audio-Included', body.include_audio===false?'false':'true');
+      if (output.warning) res.setHeader('X-Cliproom-Render-Warning', 'slow-frames');
       res.setHeader('Content-Disposition', 'attachment; filename="cliproom.' + output.extension + '"');
       res.writeHead(200); await pipeline(fs.createReadStream(output.file), res);
     } catch (cause) {

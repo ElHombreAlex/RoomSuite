@@ -75,6 +75,8 @@ To further limit available tools, set `ROOMSUITE_MCP_GROUPS` in the MCP environm
 
 Discovery calls retain the original validations, progress, image previews, revision checks and error results. Malformed arguments fail as `INVALID_ARGUMENT`; later calls can continue. Standard and compact modes require an agent capable of the discovery-and-invoke workflow for tools that are not directly advertised; existing direct-tool integrations can select full mode.
 
+Treat the successful tool response as the completion signal. The MCP SDK 2.4 client can miss a final progress callback when a progress notification and the response arrive together, even though RoomSuite sends the notification before the response.
+
 ## Productivity workflows
 
 The productivity tools operate on editable files in the RoomSuite server's **Shared files**, not on paths in the agent's separate MCP workspace. A create action requires a new path with the appropriate extension; parent folders must already exist. Reads return the file's current `revision`, its state and a browser `url`. Pass that revision as `base_revision` to each edit. A stale revision fails without overwriting newer work. `roomsuite_productivity_get` and `roomsuite_productivity_save` offer full-state access for all four formats.
@@ -330,6 +332,8 @@ Both Cliproom render tools send the assembled or saved project to the render end
 
 `render_mode` defaults to `realtime`, which uses the existing browser exporter. Set `render_mode: "offline"` on either render tool to encode timeline frames and mix audio without waiting for playback. Offline mode returns **WebM**; omit the output extension or use `.webm`. It supports normal-speed video and audio, still JPEG/PNG/WebP images, titles, tracks, fades and keyframes, for projects up to 10 minutes. Retimed video or audio, animated images and AVIF require realtime mode. Unsupported codecs also return an error suggesting realtime mode. Offline rendering requires compatible Chromium WebCodecs, keeps decoded audio and the output in memory, and may be faster or slower depending on the project and hardware. It uses [Mediabunny](https://github.com/Vanilagy/mediabunny) (MPL-2.0), installed with the MCP dependencies. Imported assets remain on the server in either mode.
 
+When real-time rendering completes substantially fewer canvas draws than its 30 fps target, both render tools return a warning that the video may be missing frames. The draw count is not an encoded-frame count and cannot detect every encoder or decoder drop; use offline mode for supported projects when consistent frames are required.
+
 In realtime mode, choose an output ending in `.mp4` or pass `output_format: "mp4"` to request H.264 video with AAC audio; choose `.webm` or `output_format: "webm"` for WebM. An explicit filename extension and format must agree. Silent image-only projects need H.264 support but no audio encoder. Set `include_audio: false` only when a deliberately silent export is wanted, including for source videos that contain sound. For audible projects, when the browser supports H.264/Opus but not native AAC, RoomSuite converts the recorded audio to AAC locally using the optional `@mediabunny/aac-encoder` dependency. Conversion needs additional time and memory; it fails rather than omitting audio if the fallback cannot run. `ROOMSUITE_BROWSER_PATH` can select a compatible browser. Offline mode remains WebM-only.
 
 ## Verify
@@ -347,3 +351,5 @@ ROOMSUITE_MCP_TEST_MODELS=1 npm test --prefix mcp
 ~~~
 
 To also exercise the bundled cleanup model through `pixelroom_inpaint`, set `ROOMSUITE_TEST_CLEANUP_MODEL=1`. That test takes longer because it loads and runs the model locally.
+
+CI runs the full MCP suite on Windows and Linux; Windows also enables the bundled subject and cleanup models. The two real-speech tests are skipped unless `ROOMSUITE_TEST_SPEECH_MODEL_DIR` and `ROOMSUITE_TEST_SPEECH_SAMPLE` point to the installed model directory and a compatible speech sample. The Radicale interoperability test is skipped unless `ROOMSUITE_TEST_RADICALE_PYTHON` and `ROOMSUITE_TEST_RADICALE_PACKAGES` point to a Python executable and an isolated Radicale installation. Tests that do not need these optional fixtures still run.

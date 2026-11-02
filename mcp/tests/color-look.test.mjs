@@ -24,6 +24,88 @@ before(async()=>{
 after(async()=>{if(browser)await browser.close();if(client)await client.close();if(server&&server.exitCode===null){server.kill();await new Promise(resolve=>server.once('exit',resolve));}if(temp){const actual=await fs.realpath(temp),parent=await fs.realpath(os.tmpdir());assert.equal(path.dirname(actual),parent);assert.ok(path.basename(actual).startsWith('roomsuite-look-test-'));await fs.rm(actual,{recursive:true,force:true});}});
 async function change(selector,value){await page.locator(selector).evaluate((input,next)=>{input.value=String(next);input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));},value);}
 async function pixels(file){await page.evaluate(()=>{let input=document.querySelector('#look-probe');if(!input){input=document.createElement('input');input.id='look-probe';input.type='file';document.body.append(input);}});await page.locator('#look-probe').setInputFiles(file);return page.evaluate(async()=>{const image=await createImageBitmap(document.querySelector('#look-probe').files[0]),c=document.createElement('canvas');c.width=image.width;c.height=image.height;const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(image,0,0);image.close();return [...x.getImageData(0,0,c.width,c.height).data];});}
+test('grading sections stay open when a range changes before toggle events run',async()=>{
+  const editor=await browser.newPage({viewport:{width:1440,height:1000}});
+  try {
+    await editor.goto(base+'/pixelroom/');await editor.locator('#imageInput').setInputFiles(path.join(work,'source.png'));await editor.waitForFunction(()=>document.querySelector('#toast').textContent.includes('Photo opened'));
+    const state=await editor.evaluate(()=>{
+      const find=name=>document.querySelector(`[data-grade-details="${name}"]`);
+      find('creative').open=true;find('wheels').open=true;
+      const select=document.querySelector('[data-look-select="wheel"]');select.focus();select.value='midtones';select.dispatchEvent(new Event('change',{bubbles:true}));
+      const current=document.querySelector('[data-look-select="wheel"]');return {creative:find('creative').open,wheels:find('wheels').open,range:current.value,focused:document.activeElement===current};
+    });
+    assert.deepEqual(state,{creative:true,wheels:true,range:'midtones',focused:true});
+    await editor.locator('[data-look-wheel]').click({position:{x:110,y:64}});
+    assert.notEqual(await editor.evaluate(()=>PixelRoomGrade.get().look.wheels.midtones.color),'#ffffff');
+    assert.equal(await editor.locator('[data-grade-details="wheels"]').evaluate(detail=>detail.open),true);
+    const switched=await editor.evaluate(()=>{
+      const find=name=>document.querySelector(`[data-grade-details="${name}"]`);
+      find('wheels').open=false;find('curves').open=true;
+      const select=document.querySelector('[data-look-select="curve"]');select.value='red';select.dispatchEvent(new Event('change',{bubbles:true}));
+      return {creative:find('creative').open,curves:find('curves').open,wheels:find('wheels').open};
+    });
+    assert.deepEqual(switched,{creative:true,curves:true,wheels:false});
+    await editor.waitForTimeout(0);await editor.locator('[data-look-select="curve"]').selectOption('blue');
+    assert.equal(await editor.locator('[data-grade-details="wheels"]').evaluate(detail=>detail.open),false,'a queued toggle from the old panel must not reopen it');
+
+    const png=await fs.readFile(path.join(work,'source.png'));
+    const response=await fetch(base+'/api/assets',{method:'POST',headers:{Origin:base,'X-Cliproom-Request':'1','X-File-Type':'image/png','X-File-Name':'race.png'},body:png});assert.equal(response.status,201);const asset=await response.json();
+    await editor.goto(base+'/cliproom/');await editor.evaluate(meta=>{
+      const project=T.empty(()=>crypto.randomUUID()),id=crypto.randomUUID();project.assets=[{...meta,kind:'image',width:64,height:64}];
+      project.clips=[{id,assetId:meta.id,trackId:project.videoTracks[0].id,start:0,in:0,out:1,rate:1,volume:1,fit:'contain',opacity:1,scale:1,x:50,y:50,brightness:100,contrast:100,saturation:100,rotation:0,flipX:false,fadeIn:0,fadeOut:0}];
+      setState(project,crypto.randomUUID(),0);selected={type:'clip',id};render();
+    },asset);
+    const clipState=await editor.evaluate(()=>{
+      const find=name=>document.querySelector(`[data-grade-details="${name}"]`);find('creative').open=true;find('wheels').open=true;
+      const select=document.querySelector('[data-look-select="wheel"]');select.focus();select.value='midtones';select.dispatchEvent(new Event('change',{bubbles:true}));
+      const current=document.querySelector('[data-look-select="wheel"]');return {creative:find('creative').open,wheels:find('wheels').open,range:current.value,focused:document.activeElement===current};
+    });
+    assert.deepEqual(clipState,{creative:true,wheels:true,range:'midtones',focused:true});
+    await editor.locator('[data-look-wheel]').click({position:{x:110,y:64}});
+    assert.notEqual(await editor.evaluate(()=>RoomGrade.readTarget(state.clips[0],'clip').look.wheels.midtones.color),'#ffffff');
+    await editor.evaluate(async()=>{document.querySelector('[data-grade-details="wheels"]').open=false;document.querySelector('[data-grade-details="creative"]').open=false;await new Promise(resolve=>setTimeout(resolve,30));});
+    const afterInspectorRebuild=await editor.evaluate(()=>{
+      const find=name=>document.querySelector(`[data-grade-details="${name}"]`);find('creative').open=true;find('wheels').open=true;
+      const amount=document.querySelector('[data-look-key="wheel-amount"]');amount.value='30';amount.dispatchEvent(new Event('input',{bubbles:true}));amount.dispatchEvent(new Event('change',{bubbles:true}));
+      return {creative:find('creative').open,wheels:find('wheels').open,amount:Number(document.querySelector('[data-look-key="wheel-amount"]').value)};
+    });
+    assert.deepEqual(afterInspectorRebuild,{creative:true,wheels:true,amount:30},'a Cliproom inspector rebuild must preserve live section state');
+  } finally {await editor.close();}
+});
+test('a slow real-time export warns that frames may be missing',{timeout:60000},async()=>{
+  const png=await fs.readFile(path.join(work,'source.png'));
+  const response=await fetch(base+'/api/assets',{method:'POST',headers:{Origin:base,'X-Cliproom-Request':'1','X-File-Type':'image/png','X-File-Name':'slow.png'},body:png});assert.equal(response.status,201);const asset=await response.json();
+  const editor=await browser.newPage({acceptDownloads:true,viewport:{width:1440,height:1000}});
+  try {
+    await editor.goto(base+'/cliproom/');await editor.evaluate(async meta=>{
+      const project=T.empty(()=>crypto.randomUUID());project.assets=[{...meta,kind:'image',width:64,height:64}];
+      project.clips=[{id:crypto.randomUUID(),assetId:meta.id,trackId:project.videoTracks[0].id,start:0,in:0,out:1.2,rate:1,volume:1,fit:'contain',opacity:1,scale:1,x:50,y:50,brightness:100,contrast:100,saturation:100,rotation:0,flipX:false,fadeIn:0,fadeOut:0}];
+      setState(project,crypto.randomUUID(),0);await imageFor(asset(meta.id)).decode();const draw=renderFrame,capture=canvas.captureStream.bind(canvas);window.frameRequests=0;window.canCountFrameRequests=false;
+      canvas.captureStream=function(...args){const stream=capture(...args),track=stream.getVideoTracks()[0];if(track?.requestFrame){const request=track.requestFrame.bind(track);track.requestFrame=()=>{window.frameRequests++;return request();};window.canCountFrameRequests=true;}return stream;};
+      renderFrame=function(...args){if(recording){const until=performance.now()+200;while(performance.now()<until){}}return draw(...args);};
+    },asset);
+    await editor.locator('#exportBtn').click();assert.match(await editor.locator('#exportModeHint').textContent(),/may drop frames/i);
+    await editor.locator('#exportFormatChoice').selectOption('webm');const [download]=await Promise.all([editor.waitForEvent('download'),editor.locator('#startExportBtn').click()]);assert.ok((await fs.stat(await download.path())).size>100);
+    assert.match(await editor.locator('#toast').textContent(),/may be missing frames/i);
+    const requests=await editor.evaluate(()=>({supported:window.canCountFrameRequests,count:window.frameRequests}));if(requests.supported)assert.ok(requests.count>0,'completed draws should request capture frames when supported');
+  } finally {await editor.close();}
+});
+test('an empty browser recording reports a recoverable export error',{timeout:60000},async()=>{
+  const png=await fs.readFile(path.join(work,'source.png'));
+  const response=await fetch(base+'/api/assets',{method:'POST',headers:{Origin:base,'X-Cliproom-Request':'1','X-File-Type':'image/png','X-File-Name':'empty.png'},body:png});assert.equal(response.status,201);const asset=await response.json();
+  const editor=await browser.newPage({viewport:{width:1440,height:1000}});
+  try {
+    await editor.addInitScript(()=>{window.MediaRecorder=class EmptyRecorder{static isTypeSupported(){return true;}constructor(stream,options){this.state='inactive';window.testRecorderMime=options.mimeType;}start(){this.state='recording';}stop(){this.state='inactive';setTimeout(()=>this.onstop?.(),0);}};});
+    await editor.goto(base+'/cliproom/');await editor.evaluate(async meta=>{
+      const project=T.empty(()=>crypto.randomUUID());project.assets=[{...meta,kind:'image',width:64,height:64}];
+      project.clips=[{id:crypto.randomUUID(),assetId:meta.id,trackId:project.videoTracks[0].id,start:0,in:0,out:.6,rate:1,volume:1,fit:'contain',opacity:1,scale:1,x:50,y:50,brightness:100,contrast:100,saturation:100,rotation:0,flipX:false,fadeIn:0,fadeOut:0}];
+      setState(project,crypto.randomUUID(),0);await imageFor(asset(meta.id)).decode();
+    },asset);
+    await editor.locator('#exportBtn').click();await editor.locator('#exportFormatChoice').selectOption('webm');await editor.locator('#startExportBtn').click();
+    await editor.waitForFunction(()=>exportFailure.includes('did not produce a video'));
+    assert.match(await editor.locator('#exportStatus').textContent(),/Try Every frame export/i);assert.equal(await editor.locator('#exportDialog').evaluate(dialog=>dialog.open),true);assert.equal(await editor.evaluate(()=>window.testRecorderMime),'video/webm;codecs=vp8,opus');
+  } finally {await editor.close();}
+});
 test('a person edits creative controls and shares an embedded LUT preset',async()=>{
   const info=await call('roomsuite_lut_inspect',{path:'swap.cube'});assert.equal(info.size,2);assert.equal(info.entries,8);
   await page.locator('#imageInput').setInputFiles(path.join(work,'source.png'));await page.waitForFunction(()=>document.querySelector('#toast').textContent.includes('Photo opened'));
@@ -33,7 +115,7 @@ test('a person edits creative controls and shares an embedded LUT preset',async(
   await page.locator('[data-grade-details="effects"] summary').click();await change('[data-look-key="effect-grain"]',12);await change('[data-look-key="effect-vignette"]',20);await change('[data-look-key="effect-sharpen"]',15);
   await page.locator('[data-grade-details="lut"] summary').click();await page.locator('[data-grade-cube]').setInputFiles(path.join(work,'swap.cube'));await page.waitForFunction(()=>PixelRoomGrade.get().look.lut?.size===2);
   const state=await page.evaluate(()=>PixelRoomGrade.get());assert.equal(state.look.curves.master[2],.65);assert.equal(state.look.hsl.red.hue,15);assert.equal(state.look.wheels.midtones.amount,35);assert.equal(state.look.grain,12);
-  await page.locator('[data-grade-details="library"] summary').click();await page.locator('[data-grade-name]').fill('Advanced look');await page.locator('[data-grade-action="save"]').click();await page.locator('[data-grade-action="save-shared"]').click();await page.locator('.shared-name input').fill('Advanced.roomgrade');await page.locator('.shared-save').click();
+  await page.locator('[data-grade-details="library"] summary').click();await page.locator('[data-grade-name]').fill('Advanced look');await page.locator('[data-grade-action="save"]').click();await page.locator('[data-grade-action="save-shared"]').click();await page.locator('.shared-name input').fill('Advanced.roomgrade');await page.locator('.shared-save').click();await page.waitForFunction(()=>document.querySelector('#toast').textContent.includes('Preset saved to shared files:'));
   await call('roomsuite_shared_download',{path:'Advanced.roomgrade',output:'Advanced.roomgrade'});preset=(await call('roomsuite_preset_get',{path:'Advanced.roomgrade'})).preset;assert.equal(preset.schema_version,2);assert.equal(preset.look.lut.size,2);
   await page.locator('#exportBtn').click();const [download]=await Promise.all([page.waitForEvent('download'),page.locator('#downloadBtn').click()]);await download.saveAs(path.join(work,'reference.png'));reference=await pixels(path.join(work,'reference.png'));assert.equal(reference[3],0);
 });
@@ -101,7 +183,11 @@ test('fast color preview reduces work but both export paths retain full processi
   await page.locator('#fastColorBtn').click();assert.equal(await page.locator('#fastColorBtn').getAttribute('aria-pressed'),'true');assert.deepEqual(await page.evaluate(()=>[gradeProbe.at(-1).width,gradeProbe.at(-1).height]),[480,270]);
   const offline=await page.evaluate(()=>{gradeProbe=[];renderFrame(new Map());return gradeProbe.at(-1);});assert.deepEqual([offline.width,offline.height],[1920,1080]);
   const speed=await page.evaluate(()=>{const source=document.createElement('canvas');source.width=1280;source.height=720;const x=source.getContext('2d');x.fillStyle='#b25a45';x.fillRect(0,0,1280,720);const clip=state.clips[0],measure=fast=>{const begin=performance.now();for(let i=0;i<3;i++)drawCover(source,clip,1,'off',fast);return (performance.now()-begin)/3;};measure(false);measure(true);return {full:measure(false),fast:measure(true)};});t.diagnostic('Synthetic 1280×720 graded frame on this machine: full '+speed.full.toFixed(1)+' ms, fast preview '+speed.fast.toFixed(1)+' ms.');
-  await page.locator('#exportBtn').click();await page.locator('#exportFormatChoice').selectOption('webm');await page.evaluate(()=>{gradeProbe=[];});const [download]=await Promise.all([page.waitForEvent('download',{timeout:30000}),page.locator('#startExportBtn').click()]);assert.ok((await fs.stat(await download.path())).size>100);const live=await page.evaluate(()=>gradeProbe.filter(value=>value.recording));assert.ok(live.length>0);assert.ok(live.every(value=>value.width===1920&&value.height===1080));
+  await page.locator('#exportBtn').click();await page.locator('#exportFormatChoice').selectOption('webm');await page.evaluate(()=>{gradeProbe=[];});
+  let download;
+  try {[download]=await Promise.all([page.waitForEvent('download',{timeout:30000}),page.locator('#startExportBtn').click()]);}
+  catch(error){const status=await page.evaluate(()=>({format:document.querySelector('#exportFormat').textContent,hint:document.querySelector('#exportStatus').textContent,toast:document.querySelector('#toast').textContent,failure:exportFailure,recording,exportPreparing,playing,currentTime,duration:totalDuration(),recorderState:recorder?.state}));throw new Error('Real-time export did not finish: '+JSON.stringify(status),{cause:error});}
+  assert.ok((await fs.stat(await download.path())).size>100);const live=await page.evaluate(()=>gradeProbe.filter(value=>value.recording));assert.ok(live.length>0);assert.ok(live.every(value=>value.width===1920&&value.height===1080));
   await page.locator('#fastColorBtn').click();assert.equal(await page.locator('#fastColorBtn').getAttribute('aria-pressed'),'false');
 });
 test('creative grading controls work at a phone-sized viewport',async()=>{
