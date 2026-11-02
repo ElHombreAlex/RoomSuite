@@ -34,7 +34,7 @@ test('human makes an editable look, shares it, and exports an image',async()=>{
   await page.locator('[data-grade-details="advanced"] summary').click();
   for(const [key,value] of [['exposure_ev','.5'],['temperature','24'],['shadows','18'],['vibrance','25']])await page.locator(`[data-grade-key="${key}"]`).evaluate((input,next)=>{input.value=next;input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));},value);
   await page.locator('[data-grade-details="library"] summary').click();await page.locator('[data-grade-name]').fill('Summer');await page.locator('[data-grade-tags]').fill('warm, holiday');await page.locator('[data-grade-action="save"]').click();
-  await page.locator('[data-grade-action="save-shared"]').click();await page.locator('.shared-name input').fill('Summer.roomgrade');await page.locator('.shared-save').click();
+  await page.locator('[data-grade-action="save-shared"]').click();await page.locator('.shared-name input').fill('Summer.roomgrade');await page.locator('.shared-save').click();await page.locator('.shared-picker').waitFor({state:'detached'});
   const shared=await call('roomsuite_shared_download',{path:'Summer.roomgrade',output:'Summer.roomgrade'});assert.ok(shared.bytes>0);
   const preset=await call('roomsuite_preset_get',{path:'Summer.roomgrade'});assert.equal(preset.preset.name,'Summer');assert.equal(preset.preset.adjustments.temperature,24);
   const [projectDownload]=await Promise.all([page.waitForEvent('download'),page.locator('#saveProjectBtn').click()]);await projectDownload.saveAs(path.join(work,'source.pixelroom'));
