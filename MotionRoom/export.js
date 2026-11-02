@@ -3,6 +3,7 @@ import {Output,WebMOutputFormat,Mp4OutputFormat,BufferTarget,CanvasSource,Qualit
 // Render at explicit timestamps, independently of wall-clock playback. A hold
 // repeats the same sampled pose for the requested number of encoded frames.
 export async function renderMotion({canvas,project,prepared,format='webm',transparent=false,fps=project.fps,holdFrames=project.holdFrames,signal,onProgress=()=>{}}){
+  if(prepared.missing?.length)throw new Error('Relink missing shared images before exporting: '+prepared.missing.map(item=>item.sharedPath).join(', '));
   if(!['webm','mp4'].includes(format)||!Number.isInteger(fps)||fps<1||fps>60||!Number.isInteger(holdFrames)||holdFrames<1||holdFrames>60)throw new Error('Invalid export settings.');
   if(transparent&&format!=='webm')throw new Error('Transparent video requires WebM/VP9. MP4 export is opaque.');
   const codec=transparent?'vp9':format==='mp4'?'avc':'vp8',quality=new Quality({bitrate:project.width*project.height>=1920*1080?8000000:4500000}),alpha=transparent?'keep':'discard';

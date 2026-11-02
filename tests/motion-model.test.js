@@ -29,7 +29,7 @@ test('round trips editable vector objects and rejects inconsistent or malformed 
 });
 test('legacy projects migrate while stage dimensions and exact frame times remain independent',()=>{
   const original=Motion.create(vector());original.version=1;delete original.fps;delete original.holdFrames;delete original.fonts;delete original.assets;for(const layer of original.layers){delete layer.id;delete layer.kind;}
-  const project=Motion.validate(original);assert.equal(project.version,2);project.width=1080;project.height=1920;project.fps=12;const at=1/12;Motion.setFrame(project.layers[0],at,frame(20),'hold');const reopened=Motion.validate(project);assert.equal(reopened.width,1080);assert.equal(reopened.height,1920);assert.equal(reopened.layers[0].keyframes[0].time,at);assert.equal(reopened.source.objects[0].x,20);
+  const project=Motion.validate(original);assert.equal(project.version,3);project.width=1080;project.height=1920;project.fps=12;const at=1/12;Motion.setFrame(project.layers[0],at,frame(20),'hold');const reopened=Motion.validate(project);assert.equal(reopened.width,1080);assert.equal(reopened.height,1920);assert.equal(reopened.layers[0].keyframes[0].time,at);assert.equal(reopened.source.objects[0].x,20);
 });
 test('artwork can be added behind existing layers without changing the stage',()=>{
   const project=Motion.empty({width:1080,height:1920});project.layers=[{id:'source-0',kind:'lens',name:'Lens',visible:true,lens:{x:100,y:100,radius:30,zoom:2,offsetX:0,offsetY:0,stroke:'#000000',strokeWidth:0},keyframes:[]}];assert.equal(Motion.attachSource(project,vector()),1);const reopened=Motion.validate(project);assert.equal(reopened.width,1080);assert.equal(reopened.height,1920);assert.equal(reopened.layers[0].kind,'vector');assert.equal(reopened.layers[1].kind,'lens');assert.notEqual(reopened.layers[0].id,reopened.layers[1].id);assert.throws(()=>Motion.attachSource(project,vector()),/already/i);
@@ -41,4 +41,11 @@ test('native text, lens and large batches are validated without losing their dat
 });
 test('compositions accept more than the old 10,000-keyframe ceiling',()=>{
   const project=Motion.empty({duration:60,fps:60});project.layers=[{id:'title',kind:'text',name:'Title',visible:true,text:{content:'Hello',x:10,y:10,fontSize:30,font:'Bricolage Grotesque',weight:'normal',style:'normal',align:'left',lineHeight:1.2,color:'#112233'},keyframes:Array.from({length:10001},(_,i)=>({time:i/200,x:0,y:0,scale:1,rotation:0,opacity:1,easing:'hold'}))}];assert.equal(Motion.validate(project).layers[0].keyframes.length,10001);
+});
+test('v2 projects migrate while cyclic relationships and unsafe linked paths are rejected',()=>{
+  const old=Motion.empty({width:320,height:240,duration:1});old.version=2;delete old.symbols;delete old.behaviors;const migrated=Motion.validate(old);assert.equal(migrated.version,3);assert.deepEqual(migrated.symbols,[]);assert.deepEqual(migrated.behaviors,[]);
+  const project=Motion.empty({width:320,height:240,duration:1});project.layers=[{id:'a',kind:'group',name:'A',visible:true,group:{x:0,y:0},parentId:'b',keyframes:[]},{id:'b',kind:'group',name:'B',visible:true,group:{x:0,y:0},parentId:'a',keyframes:[]}];assert.throws(()=>Motion.validate(project),/cycle/i);project.layers=[];project.assets=[{id:'bad',sharedPath:'../secret.png'}];assert.throws(()=>Motion.validate(project),/asset/i);
+});
+test('normalized behaviors add reusable motion without modifying base keyframes',()=>{
+  const layer={kind:'shape',keyframes:[],effects:[{behaviorId:'sweep',start:1,duration:2,amountX:200,amountY:100}]},behavior={id:'sweep',keyframes:[{at:0,...Motion.defaults,easing:'linear'},{at:1,...Motion.defaults,x:1,y:1,easing:'linear'}]},project={behaviors:[behavior]};assert.equal(Motion.sample(layer,2).x,0);const value=Motion.sampleAnimated(layer,2,project);assert.equal(value.x,100);assert.equal(value.y,50);
 });

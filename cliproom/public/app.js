@@ -1256,7 +1256,7 @@ async function importRoomHandoff() {
   const params = new URLSearchParams(location.search);
   const id = params.get('asset');
   if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) return;
-  const suppliedDuration = Number(params.get('duration')),sourceId=params.get('source_asset'),processing=params.get('processing');
+  const suppliedDuration = Number(params.get('duration')),sourceId=params.get('source_asset'),processing=params.get('processing'),audioId=params.get('audio_asset');
   window.history.replaceState(null, '', location.pathname);
   mediaBusy = true; $('importBtn').disabled = true; $('emptyImportBtn').disabled = true;
   try {
@@ -1286,9 +1286,11 @@ async function importRoomHandoff() {
       media.removeAttribute('src'); media.load();
     }
     let linked=null,sourceAsset=null;if(sourceId||processing){if(kind!=='audio'||!sourceId||!processing||processing.length>4096)throw new Error('The editable SoundRoom handoff is invalid.');let parsed;try{parsed=JSON.parse(processing);}catch{throw new Error('The editable SoundRoom settings are invalid.');}linked=SoundSettings.link({sourceAssetId:sourceId,processing:parsed});if(sourceId===id)throw new Error('The editable source must be separate from the processed audio.');const sourceMeta=await request('/api/assets/'+sourceId+'/metadata');if(!sourceMeta.type.startsWith('audio/'))throw new Error('The editable SoundRoom source is not audio.');const probe=document.createElement('audio');probe.preload='metadata';const sourceDuration=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Reading the editable source timed out.')),20000);probe.onloadedmetadata=()=>{clearTimeout(timer);resolve(probe.duration);};probe.onerror=()=>{clearTimeout(timer);reject(new Error('The editable source cannot be decoded.'));};probe.src='/api/assets/'+sourceId;});probe.removeAttribute('src');probe.load();if(!Number.isFinite(sourceDuration)||Math.abs(sourceDuration-info.duration)>.05)throw new Error('The editable source duration does not match the processed audio.');sourceAsset={...sourceMeta,duration:sourceDuration,width:0,height:0,kind:'audio'};}
-    change(() => { if(sourceAsset&&!state.assets.some(item=>item.id===sourceAsset.id))state.assets.push(sourceAsset);state.assets.push({ ...uploaded, ...info, kind }); });
+    let accompanyingAudio=null;if(audioId){if(kind!=='video'||audioId===id||!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(audioId))throw new Error('The accompanying audio handoff is invalid.');const meta=await request('/api/assets/'+audioId+'/metadata');if(!meta.type.startsWith('audio/'))throw new Error('The accompanying asset is not audio.');const probe=document.createElement('audio');probe.preload='metadata';const duration=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Reading the accompanying audio timed out.')),20000);probe.onloadedmetadata=()=>{clearTimeout(timer);resolve(probe.duration);};probe.onerror=()=>{clearTimeout(timer);reject(new Error('The accompanying audio cannot be decoded.'));};probe.src='/api/assets/'+audioId;});probe.removeAttribute('src');probe.load();if(!Number.isFinite(duration)||duration<=0||duration>86400)throw new Error('The accompanying audio duration is invalid.');accompanyingAudio={...meta,duration,width:0,height:0,kind:'audio'};}
+    change(() => { if(sourceAsset&&!state.assets.some(item=>item.id===sourceAsset.id))state.assets.push(sourceAsset);state.assets.push({ ...uploaded, ...info, kind });if(accompanyingAudio)state.assets.push(accompanyingAudio); });
     addMedia(uploaded.id,linked);
-    notify(uploaded.name + ' added to the timeline.');
+    if(accompanyingAudio){addMedia(accompanyingAudio.id);change(()=>{const clip=state.audioClips.findLast(item=>item.assetId===accompanyingAudio.id);if(clip){clip.out=Math.min(clip.out,info.duration);clip.volume=1;}});}
+    notify(uploaded.name + (accompanyingAudio?' and its audio':'') + ' added to the timeline.');
   } catch (error) { notify('Could not open the media: ' + error.message, 8000); }
   finally { mediaBusy = false; $('importBtn').disabled = false; $('emptyImportBtn').disabled = false; }
 }

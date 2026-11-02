@@ -1,3 +1,10 @@
+## RoomSuite 3.2.2
+
+- **Reusable compositions:** MotionRoom groups, sibling attachments with anchors and orientation, reusable symbols with instance overrides, cross-project copies, and parameterized behaviors separate motion from content.
+- **Flexible layout and assets:** text boxes wrap and can shrink to fit; images support fit modes, rounded clipping and layer styles. Replace an embedded image or link/relink a stable asset ID to Shared files. Missing links are visible and block export.
+- **Review and audio handoff:** download contact sheets, compare projects and inspect a full-resolution crop; MCP adds difference previews and advisory frame-by-frame motion lint. An optional audio file can accompany a render into Cliproom as a separate track.
+- **Compatibility:** 3.2 and 3.2.1 projects open in 3.2.2. Newly saved projects use a newer format and do not open in older MotionRoom versions. Attachments are between siblings, symbols contain native MotionRoom layers, and linked assets require the same Shared files server. Video downloaded directly from MotionRoom remains silent. See the [MotionRoom guide](README.md#motionroom) for limits.
+
 ## RoomSuite 3.2.1
 
 - **MotionRoom compositions:** set an independent stage, add text, shapes, images and a live magnifier, reorder layers, and animate text reveal and lens zoom. Bricolage Grotesque and Gelasio are included; other fonts can be embedded.

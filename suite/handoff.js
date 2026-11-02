@@ -1,7 +1,7 @@
 'use strict';
 // Explicit handoff: uploads only when the user chooses Send to Cliproom.
 window.RoomHandoff = {
-  async send(blob, filename, duration, status, link, editable = null) {
+  async send(blob, filename, duration, status, link, editable = null, accompanying = null) {
     status.textContent = 'Sending your media to the Cliproom server…';
     status.classList.remove('error');
     link.classList.add('hidden');
@@ -11,6 +11,7 @@ window.RoomHandoff = {
       let data;try{data=await upload(blob,filename,editable?.processedId);}catch(error){if(source)throw new Error(error.message+' The uploaded source remains in the server media library.');throw error;}
       const query = new URLSearchParams({ asset: data.id, duration: String(duration) });
       if(editable){query.set('source_asset',source.id);query.set('processing',JSON.stringify(editable.processing));}
+      if(accompanying?.audio){try{const audio=await upload(accompanying.audio,accompanying.audio.name);query.set('audio_asset',audio.id);}catch(error){throw new Error(error.message+' The uploaded video remains in the server media library.');}}
       link.href = '/cliproom/?' + query.toString();
       link.classList.remove('hidden');
       status.textContent = 'Ready in Cliproom. Open it to add this media to a new project.';

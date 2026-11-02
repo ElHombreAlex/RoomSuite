@@ -67,6 +67,11 @@ test('shared trash preserves files, rejects collisions and restores folders safe
   assert.equal((await request('/api/workspace/trash/purge','POST',{id:'../escape'})).status,400);
   await request('/api/workspace/delete','POST',{path:'keep.txt'});await request('/api/workspace/delete','POST',{path:'folder',recursive:true});
 });
+test('saved MotionRoom links are found before a Shared image is trashed as unreferenced',async()=>{
+  assert.equal((await upload('motion-linked.png','image')).status,201);assert.equal((await upload('linked.motionroom',JSON.stringify({format:'motionroom',assets:[{id:'photo',sharedPath:'motion-linked.png'}]}))).status,201);
+  const report=await (await request('/api/workspace/references?'+new URLSearchParams({path:'motion-linked.png'}))).json();assert.equal(report.status,'referenced');assert.ok(report.references.some(item=>item.path==='linked.motionroom'));const response=await request('/api/workspace/trash','POST',{path:'motion-linked.png',require_unreferenced:true,confirm_unscanned:true,base_revision:report.revision});assert.equal(response.status,409);
+  await request('/api/workspace/delete','POST',{path:'linked.motionroom'});await request('/api/workspace/delete','POST',{path:'motion-linked.png'});
+});
 test('notes preserve revisions, Markdown, tags and folders', async () => {
   assert.equal((await request('/api/notes/folders','POST',{path:'Work/Projects'})).status,201);
   const created=await (await request('/api/notes','POST',{title:'A note',body:'# Hello\n**World**',folder:'Work/Projects',tags:['launch','ideas']})).json();

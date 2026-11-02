@@ -2,7 +2,7 @@
 const fs=require('node:fs'),fsp=require('node:fs/promises'),path=require('node:path'),crypto=require('node:crypto');
 const NotesMedia=require('../NotesRoom/media');
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const extensions=new Set(['.txt','.md','.csv','.tsv','.srt','.vtt','.json','.ics','.html','.css','.js','.xml','.yml','.yaml','.log','.roomgrade','.docsuite','.gridsuite','.decksuite','.plansuite','.vectorroom','.capturescene','.decktemplate','.pixelroom','.soundroom']);
+const extensions=new Set(['.txt','.md','.csv','.tsv','.srt','.vtt','.json','.ics','.html','.css','.js','.xml','.yml','.yaml','.log','.roomgrade','.docsuite','.gridsuite','.decksuite','.plansuite','.vectorroom','.capturescene','.decktemplate','.pixelroom','.soundroom','.motionroom']);
 const maxEntries=10000,maxFiles=2000,maxFileBytes=8*1024*1024,maxBytes=64*1024*1024,maxNotes=10000,maxNoteBytes=64*1024*1024,maxReferences=100;
 const fingerprint=stat=>crypto.createHash('sha256').update(JSON.stringify([stat.dev,stat.ino,stat.size,stat.mtimeMs,stat.ctimeMs])).digest('hex');
 
