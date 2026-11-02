@@ -27,3 +27,18 @@ test('round trips editable vector objects and rejects inconsistent or malformed 
   const badFrame=structuredClone(motion);badFrame.layers[0].keyframes=[{time:1,x:0,y:0,scale:1,rotation:0,opacity:1,easing:'unknown'}];assert.throws(()=>Motion.validate(badFrame),/keyframe/i);
   const badVector=structuredClone(motion);badVector.source.objects[0].fill='url(https://example.com)';assert.throws(()=>Motion.validate(badVector),/invalid/i);
 });
+test('legacy projects migrate while stage dimensions and exact frame times remain independent',()=>{
+  const original=Motion.create(vector());original.version=1;delete original.fps;delete original.holdFrames;delete original.fonts;delete original.assets;for(const layer of original.layers){delete layer.id;delete layer.kind;}
+  const project=Motion.validate(original);assert.equal(project.version,2);project.width=1080;project.height=1920;project.fps=12;const at=1/12;Motion.setFrame(project.layers[0],at,frame(20),'hold');const reopened=Motion.validate(project);assert.equal(reopened.width,1080);assert.equal(reopened.height,1920);assert.equal(reopened.layers[0].keyframes[0].time,at);assert.equal(reopened.source.objects[0].x,20);
+});
+test('artwork can be added behind existing layers without changing the stage',()=>{
+  const project=Motion.empty({width:1080,height:1920});project.layers=[{id:'source-0',kind:'lens',name:'Lens',visible:true,lens:{x:100,y:100,radius:30,zoom:2,offsetX:0,offsetY:0,stroke:'#000000',strokeWidth:0},keyframes:[]}];assert.equal(Motion.attachSource(project,vector()),1);const reopened=Motion.validate(project);assert.equal(reopened.width,1080);assert.equal(reopened.height,1920);assert.equal(reopened.layers[0].kind,'vector');assert.equal(reopened.layers[1].kind,'lens');assert.notEqual(reopened.layers[0].id,reopened.layers[1].id);assert.throws(()=>Motion.attachSource(project,vector()),/already/i);
+});
+test('native text, lens and large batches are validated without losing their data',()=>{
+  const project=Motion.empty({width:1080,height:1920,fps:12});project.layers=[{id:'title',kind:'text',name:'Title',visible:true,text:{content:'Find what’s next',x:540,y:200,fontSize:96,font:'Gelasio',weight:'bold',style:'italic',align:'center',lineHeight:1.2,color:'#112233'},keyframes:[]},{id:'lens',kind:'lens',name:'Lens',visible:true,lens:{x:540,y:900,radius:130,zoom:2,offsetX:0,offsetY:0,stroke:'#aabb00',strokeWidth:12},keyframes:[]}];
+  for(let i=0;i<96;i++)Motion.setFrame(project.layers[1],i/20,{...Motion.defaults,x:i,zoom:2+i/100},'hold');const result=Motion.validate(project);assert.equal(result.layers[1].keyframes.length,96);assert.equal(Motion.sample(result.layers[1],.025).x,0);assert.equal(Motion.sample(result.layers[1],.05).x,1);
+  const bad=structuredClone(project);bad.layers[0].text.font='unregistered-font';assert.throws(()=>Motion.validate(bad),/text layer/i);bad.layers[0].text.font='Gelasio';bad.layers[1].lens.zoom=0;assert.throws(()=>Motion.validate(bad),/lens layer/i);
+});
+test('compositions accept more than the old 10,000-keyframe ceiling',()=>{
+  const project=Motion.empty({duration:60,fps:60});project.layers=[{id:'title',kind:'text',name:'Title',visible:true,text:{content:'Hello',x:10,y:10,fontSize:30,font:'Bricolage Grotesque',weight:'normal',style:'normal',align:'left',lineHeight:1.2,color:'#112233'},keyframes:Array.from({length:10001},(_,i)=>({time:i/200,x:0,y:0,scale:1,rotation:0,opacity:1,easing:'hold'}))}];assert.equal(Motion.validate(project).layers[0].keyframes.length,10001);
+});

@@ -96,7 +96,7 @@ jobs:
       - name: Install Chromium for browser tests
         run: node mcp/node_modules/playwright/cli.js install chromium --only-shell
       - name: Test creative and Office workflows
-        run: node --test --test-concurrency=1 mcp/tests/office-ui.test.mjs mcp/tests/integration.test.mjs mcp/tests/mp4-export.test.mjs mcp/tests/color-look.test.mjs
+        run: node --test --test-concurrency=1 mcp/tests/office-ui.test.mjs mcp/tests/integration.test.mjs mcp/tests/mp4-export.test.mjs mcp/tests/color-look.test.mjs mcp/tests/motionroom.test.mjs mcp/tests/motionroom-321.test.mjs
       - name: Build the Mac installer
         run: bash macos/build-installer.sh
       - name: Test the installed application and MCP

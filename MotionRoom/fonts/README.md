@@ -1,0 +1,3 @@
+Bricolage Grotesque and Gelasio are distributed under the SIL Open Font License 1.1. Their respective copyright notices and license terms are in `Bricolage-OFL.txt` and `Gelasio-OFL.txt`.
+
+The font binaries come from the official Google Fonts repository: [`ofl/bricolagegrotesque`](https://github.com/google/fonts/tree/main/ofl/bricolagegrotesque) and [`ofl/gelasio`](https://github.com/google/fonts/tree/main/ofl/gelasio). Their Git blob IDs are `9a4ca271ff84357bb8f8830ce71b85ea3571f731` (Bricolage), `23711d2fa49ab8c60301f8fd718cc10614db693a` (Gelasio), and `21e3c87ca4dbf1e298a0b4ce5e31e1fbeb0e7ea4` (Gelasio italic).

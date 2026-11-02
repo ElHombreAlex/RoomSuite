@@ -16,5 +16,5 @@ export async function deploymentStatus(_args,signal){
   async function worker(){for(;;){const index=cursor++;if(index>=entries.length)return;const [route,expected]=entries[index];try{const r=await fetch(origin+route,{signal,cache:'no-store'});if(!r.ok||Version.hash(Buffer.from(await r.arrayBuffer()))!==expected)failed.push(route);}catch{failed.push(route);}}}
   await Promise.all(Array.from({length:Math.min(8,entries.length)},worker));
   if(failed.length)issues.push('Served frontend files differ from the backend startup snapshot: '+failed.sort().join(', '));
-  return {ok:issues.length===0,version:startup.version,backend_version:server.version,checked_frontend_files:entries.length,issues,scope:'This connected MCP process, the running backend, and served HTML, CSS and JavaScript. Other agent processes must run this check separately.'};
+  return {ok:issues.length===0,version:startup.version,backend_version:server.version,checked_frontend_files:entries.length,issues,scope:'This connected MCP process, the running backend, and served HTML, CSS, JavaScript and bundled fonts. Other agent processes must run this check separately.'};
 }

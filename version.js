@@ -14,7 +14,7 @@ function walk(directory,base=''){
     if(entry.name.startsWith('.')||['node_modules','vendor-src','tests','data'].includes(entry.name))return [];
     const relative=base?base+'/'+entry.name:entry.name,full=path.join(directory,entry.name);
     if(entry.isDirectory())return walk(full,relative);
-    return entry.isFile()&&/\.(?:html|css|js|mjs)$/i.test(entry.name)?[relative]:[];
+    return entry.isFile()&&/\.(?:html|css|js|mjs|ttf)$/i.test(entry.name)?[relative]:[];
   });
 }
 function collect(files){const entries={},cached=new Map();for(const [name,file] of Object.entries(files).sort(([a],[b])=>a.localeCompare(b,'en'))){if(!cached.has(file))cached.set(file,fs.existsSync(path.join(root,file))?hash(fs.readFileSync(path.join(root,file))):null);entries[name]=cached.get(file);}return {hash:hash(JSON.stringify(entries)),files:entries};}

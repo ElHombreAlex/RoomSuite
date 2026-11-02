@@ -1,3 +1,10 @@
+## RoomSuite 3.2.1
+
+- **MotionRoom compositions:** set an independent stage, add text, shapes, images and a live magnifier, reorder layers, and animate text reveal and lens zoom. Bricolage Grotesque and Gelasio are included; other fonts can be embedded.
+- **Frame-accurate video:** render WebM or MP4 at 1–60 fps, repeat poses for stop motion, export transparent WebM/VP9, and send video to Cliproom. The optional MCP component and a compatible browser encoder are required.
+- **Agent workflows and memory:** create, inspect, batch-edit, preview and render compositions through MotionRoom MCP tools. PaintRoom layers are trimmed to visible bounds before caching, allowing more sparse layers within the retained-pixel limit.
+- Existing 3.2 MotionRoom projects open in the new version; newly saved projects use a newer format. See the [MotionRoom guide](README.md#motionroom) for limits.
+
 ## RoomSuite 3.2.0
 
 - **MotionRoom:** animate individual PaintRoom layers or VectorRoom objects with keyframed position, scale, rotation and opacity; choose easing, preview on the timeline, save an editable motion project and export WebM or send it to Cliproom.

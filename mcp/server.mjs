@@ -6,6 +6,7 @@ import { serverUrl, editImage, inpaintImage, recognizePixelText, editAudio, hand
 import { listProjects, getProject, saveProject, auditMedia, listTrashedMedia, trashMedia, restoreMedia, purgeMedia, proxyStatus, createProxy, deleteProxy, exportPackage, importPackage, importSubtitles, generateSubtitles, exportSubtitles } from './projects.mjs';
 import { registerWorkspace } from './register-workspace.mjs';
 import { registerProductivity } from './register-productivity.mjs';
+import { registerMotion } from './register-motion.mjs';
 import { imageContent } from './preview.mjs';
 import { previewVideo } from './video-preview.mjs';
 import { deploymentStatus } from './deployment.mjs';
@@ -106,13 +107,13 @@ function handler(fn) {
 function renderWithPreview(fn){return async(args,signal,progress)=>{const result=await fn(args,signal,progress);if(!args.preview_times)return result;try{const preview=await previewVideo({input:result.path,times:args.preview_times},signal),{preview:picture,[imageContent]:images,...verification}=preview;return {...result,verification,preview:picture,[imageContent]:images};}catch(error){return {...result,preview_error:'Video was saved, but inspection failed: '+error.message};}};}
 function buildServer() {
   const server = new McpServer({ name:'roomsuite', version:Version.snapshot().version });
-  const knownGroups=['shared','notesroom','paintroom','pixelroom','soundroom','vectorroom','captureroom','cliproom','docsuite','gridsuite','decksuite','plansuite'];
+  const knownGroups=['shared','notesroom','paintroom','pixelroom','soundroom','vectorroom','motionroom','captureroom','cliproom','docsuite','gridsuite','decksuite','plansuite'];
   const configured=(process.env.ROOMSUITE_MCP_GROUPS||'').trim(),groups=configured?new Set(configured.toLowerCase().split(',').map(value=>value.trim()).filter(Boolean)):null;
   if(groups&&(!groups.size||[...groups].some(group=>!knownGroups.includes(group))))throw new Error('ROOMSUITE_MCP_GROUPS must be a comma-separated list of: '+knownGroups.join(', '));
   const mode=(process.env.ROOMSUITE_MCP_MODE||'standard').trim().toLowerCase();
   if(!['standard','full','compact'].includes(mode))throw new Error('ROOMSUITE_MCP_MODE must be standard, full or compact.');
   const suites=['docsuite','gridsuite','decksuite','plansuite'],always=new Set(['roomsuite_info','roomsuite_check_deployment','roomsuite_discover_suites']);
-  const common=new Set(['roomsuite_shared_list','roomsuite_shared_upload','roomsuite_shared_download','roomsuite_preview_image','pixelroom_edit','vectorroom_create','cliproom_render','docsuite_create','gridsuite_create','decksuite_create','plansuite_create']);
+  const common=new Set(['roomsuite_shared_list','roomsuite_shared_upload','roomsuite_shared_download','roomsuite_preview_image','pixelroom_edit','vectorroom_create','motionroom_create','motionroom_render','cliproom_render','docsuite_create','gridsuite_create','decksuite_create','plansuite_create']);
   const enabled=name=>!groups||always.has(name)||(name.startsWith('roomsuite_productivity_')?suites.some(suite=>groups.has(suite)):name.startsWith('roomsuite_')?groups.has('shared'):groups.has(name.split('_')[0]));
   const published=[],toolsByName=new Map(),registrar={registerTool(name,configuration,fn){if(!enabled(name))return;published.push(name);toolsByName.set(name,{configuration,fn});if(mode==='full'||always.has(name)||(mode==='standard'&&common.has(name)))return server.registerTool(name,configuration,fn);}};
   registrar.registerTool('roomsuite_check_deployment',{title:'Check running versions',description:'Compare this connected MCP process, the backend startup snapshot, current files, and served frontend HTML, CSS and JavaScript. Each connected agent must check its own MCP process.',inputSchema:z.object({}),outputSchema:z.object({ok:z.boolean(),version:z.string(),backend_version:z.string(),checked_frontend_files:z.number(),issues:z.array(z.string()),scope:z.string()}),annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}},handler(deploymentStatus));
@@ -294,6 +295,7 @@ function buildServer() {
     }), outputSchema:artifact, annotations:{ readOnlyHint:false, destructiveHint:false, openWorldHint:false }
   }, handler(renderWithPreview(renderSavedProject)));
   registerWorkspace(registrar,{handler,file,artifact});
+  registerMotion(registrar,{handler,file,artifact});
   registerProductivity(registrar,{handler,file,artifact});
   if(mode!=='full'){
     server.registerTool('roomsuite_find_tools',{title:'Find RoomSuite tools',description:'Search available tool names and descriptions. Retrieve a selected schema with roomsuite_tool_schema, then call it using roomsuite_invoke.',inputSchema:z.object({query:z.string().max(200).optional(),offset:z.number().int().min(0).optional(),limit:z.number().int().min(1).max(100).optional()}),annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}},handler(async({query='',offset=0,limit=30})=>{

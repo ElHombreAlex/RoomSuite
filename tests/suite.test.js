@@ -33,6 +33,7 @@ test('launcher and all rooms are served by one server', async () => {
   const wasm = await fetch(base + '/pixelroom/vendor/vision/ort-wasm-simd-threaded.wasm', { method:'HEAD' });
   assert.equal(wasm.status, 200); assert.equal(wasm.headers.get('content-type'), 'application/wasm');
   const clipScript = await fetch(base + '/app.js'); assert.equal(clipScript.status, 200); assert.match(await clipScript.text(), /importRoomHandoff/);
+  const font = await fetch(base + '/motionroom/fonts/BricolageGrotesque.ttf', { method:'HEAD' });assert.equal(font.status,200);assert.equal(font.headers.get('content-type'),'font/ttf');
 });
 test('handoff keeps same-origin upload protection and exposes only stored metadata', async () => {
   const headers = { Origin:base, 'X-Cliproom-Request':'1', 'X-File-Type':'audio/wav', 'X-File-Name':'voice.wav' };

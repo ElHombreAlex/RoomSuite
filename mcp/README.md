@@ -71,7 +71,7 @@ The agent host's sandbox must allow the MCP process to launch Chromium, access i
 
 By default, RoomSuite advertises a small set of common tools together with discovery and invocation tools. Use `roomsuite_find_tools` to search the complete enabled catalog, `roomsuite_tool_schema` to retrieve a selected input schema, and `roomsuite_invoke` to call it with `{"name":"decksuite_get","arguments":{"path":"Pitch.decksuite"}}`. Directly advertised tools can still be called normally. Set `ROOMSUITE_MCP_MODE=full` and reconnect to expose every enabled tool directly, as in earlier releases. Set `ROOMSUITE_MCP_MODE=compact` for only the six discovery, invocation and diagnostic tools.
 
-To further limit available tools, set `ROOMSUITE_MCP_GROUPS` in the MCP environment to a comma-separated list such as `shared,decksuite,gridsuite`, then restart the connection. Available groups are `shared`, `notesroom`, `paintroom`, `pixelroom`, `soundroom`, `vectorroom`, `captureroom`, `cliproom`, `docsuite`, `gridsuite`, `decksuite` and `plansuite`. Discovery and deployment checks remain available. Include `shared` when you need file transfer or media-preview tools; add all groups needed by a multi-room workflow. `roomsuite_info` reports the available catalog, and `roomsuite_discover_suites` lists enabled productivity suites. An unknown group prevents initialization and is reported on MCP stderr. Groups reduce exposed schemas and are not an access-control boundary.
+To further limit available tools, set `ROOMSUITE_MCP_GROUPS` in the MCP environment to a comma-separated list such as `shared,decksuite,gridsuite`, then restart the connection. Available groups are `shared`, `notesroom`, `paintroom`, `pixelroom`, `soundroom`, `vectorroom`, `motionroom`, `captureroom`, `cliproom`, `docsuite`, `gridsuite`, `decksuite` and `plansuite`. Discovery and deployment checks remain available. Include `shared` when you need file transfer or media-preview tools; add all groups needed by a multi-room workflow. `roomsuite_info` reports the available catalog, and `roomsuite_discover_suites` lists enabled productivity suites. An unknown group prevents initialization and is reported on MCP stderr. Groups reduce exposed schemas and are not an access-control boundary.
 
 Discovery calls retain the original validations, progress, image previews, revision checks and error results. Malformed arguments fail as `INVALID_ARGUMENT`; later calls can continue. Standard and compact modes require an agent capable of the discovery-and-invoke workflow for tools that are not directly advertised; existing direct-tool integrations can select full mode.
 
@@ -166,6 +166,7 @@ NotesRoom stores its mixed-media sequence in the Markdown `body`; media files ar
 | soundroom_handoff_cliproom | Upload a processed WAV and a separate editable float source with SoundRoom settings, optionally creating a Cliproom project. Supply a fresh `handoff_id`; retries with identical input/settings reuse media and the project. Cliproom plays the processed copy; reopen the linked source in SoundRoom to make changes and send a new clip. |
 | soundroom_session_inspect, soundroom_analyze_loudness | Validate a session and return its revision/settings, or analyze the processed result as bounded integrated LUFS and sample peak; this is not a certified true-peak meter. |
 | vectorroom_create, vectorroom_preview | Create shapes, text and Bézier paths with optional object opacity; export SVG, PNG or an editable .vectorroom project, or preview a composition without writing a file. Text supports multiline strings, fonts, `font_weight`, `font_style`, `text_align`, `line_height` and `letter_spacing`. `vectorroom_create` also accepts `include_preview`. |
+| motionroom_create, motionroom_inspect, motionroom_edit, motionroom_preview, motionroom_render | Create and batch-edit editable compositions with text, fonts, shapes, images and a live lens; inspect frames and render exact-frame WebM/MP4 or transparent WebM. See [MotionRoom compositions](#motionroom-compositions). |
 | vectorroom_inspect_project, vectorroom_arrange_project, vectorroom_update_project | Inspect IDs, properties, groups and browser-measured bounds; use the SHA-256 revision to group, align, distribute, move, combine or edit one object's properties in a new `.vectorroom` file. Select one path and use `include_path_nodes` to read its nodes. Edits support `dry_run`; incompatible properties are rejected and grouped objects must first be ungrouped. Legacy files with missing IDs can be targeted by index and saved as a normalized copy. |
 | captureroom_record_scene | Record a prepared image/text scene at 360p, 720p or 1080p, with optional countdown, 15/30 fps target and scheduled pause/resume intervals. Scene coordinates remain in a 1280 × 720 space. |
 | captureroom_template_create, captureroom_template_inspect | Create or inspect a portable `.capturescene` scene. Images are embedded; screen, camera and microphone sources are placeholders without device identifiers or streams. |
@@ -243,6 +244,29 @@ For example, an agent can call vectorroom_create with:
 ~~~
 
 It can then use cover.png as an input to pixelroom_edit or cliproom_render. Run roomsuite_info first if the agent needs to discover the configured workspace.
+
+## MotionRoom compositions
+
+`motionroom_create` writes a new `.motionroom` project in the agent workspace. Supply `source_path` for a `.paintroom` or `.vectorroom` source, or omit it for an empty composition. A `stage` sets `width`, `height`, `duration`, `fps`, `holdFrames` and a six-digit `background` color or `null` for transparency. The stage does not resize or move the imported artwork. Add native `text`, `shape`, `image` and `lens` layers in back-to-front order. A lens samples the already-composited layers below it; its position, scale, opacity and `zoom` can be keyframed. Text `reveal` runs from 0 to 1.
+
+For example, create a 12 fps vertical composition with a typewriter-style title and a moving magnifier:
+
+```json
+{
+  "output": "promo.motionroom",
+  "stage": {"width": 1080, "height": 1920, "duration": 8, "fps": 12, "holdFrames": 1, "background": "#f5f3ea"},
+  "layers": [
+    {"id": "title", "kind": "text", "text": {"content": "What's next?", "font": "Bricolage Grotesque", "fontSize": 96, "x": 540, "y": 240}, "keyframes": [{"frame": 0, "reveal": 0}, {"frame": 12, "reveal": 1}]},
+    {"id": "lens", "kind": "lens", "lens": {"x": 540, "y": 950, "radius": 150, "zoom": 2}, "keyframes": [{"frame": 0, "x": 0, "easing": "hold"}, {"frame": 48, "x": 150}]}
+  ]
+}
+```
+
+Each keyframe uses exactly one of `frame` (an integer at the project's fps) or `time` in seconds. Omitted animated values and easing inherit from the preceding keyframe; `hold` keeps the earlier pose until the next keyframe. For larger jobs, write a JSON array in the workspace and pass it as `layers_path`. A text font can be `Bricolage Grotesque`, `Gelasio`, a supported device font, or an ID in `fonts`, for example `{"id":"brand","name":"Brand","path":"brand.woff2"}`. Fonts and image `assets` are embedded. An image layer refers to an asset using `image: {"assetId":"...", "x":0, "y":0, "width":1080, "height":1920}`.
+
+Call `motionroom_inspect` to get layer IDs and the SHA-256 `revision`. `motionroom_edit` applies an ordered `operations` array to a **new** output file and checks that revision. Operations are `set_stage` with `stage`, `import_source` with `source_path` and optional back-to-front `index` (default 0), `add_font` with `font`, `add_asset` with `asset`, `add_layer` with `layer`, `set_keyframes` with `layer_id` and `keyframes`, `update_layer` with `layer_id` and `changes`, `move_layer` with `layer_id` and a zero-based back-to-front `index`, and `remove_layer` with `layer_id`. A composition can have one imported artwork source. Use `operations_path` for a large JSON array. Changing fps does not retime existing keyframes, which are stored in seconds.
+
+`motionroom_preview` returns a PNG image block for a chosen time. `motionroom_render` writes `.webm` or `.mp4` using exact frame timestamps; `fps` and `hold_frames` can override the project for that export. Set `transparent: true` only with WebM/VP9. `send_to_cliproom: true` also uploads the rendered video and returns its asset ID and Cliproom URL; uploaded media remains on the server. Transparent playback depends on the receiving player. Encoding requires the optional MCP dependencies and browser support for the selected codec. See the [MotionRoom guide](../README.md#motionroom) for memory, project and duration limits.
 
 ## Frame workflow for agents
 
