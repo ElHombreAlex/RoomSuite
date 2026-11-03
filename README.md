@@ -1,6 +1,6 @@
 # RoomSuite
 
-[![M8ven Score](https://m8ven.ai/badge/mcp/elhombrealex-roomsuite-ldiexw?v=3bde4cfd106648272d338ebb0d5a4afb)](https://m8ven.ai/mcp/elhombrealex-roomsuite-ldiexw?s=readme)
+[![M8ven Verified](https://m8ven.ai/badge/mcp/elhombrealex-roomsuite-ldiexw?v=3bde4cfd106648272d338ebb0d5a4afb&variant=verified)](https://m8ven.ai/mcp/elhombrealex-roomsuite-ldiexw?s=readme)
 
 RoomSuite is a self-hosted workspace for creative work, productivity, notes and shared files. Use the launcher switch to choose Creative or Productivity. Each room or suite opens in its own tab or window, so you can work in several at once:
 
