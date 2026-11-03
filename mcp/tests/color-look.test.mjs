@@ -72,7 +72,7 @@ test('grading sections stay open when a range changes before toggle events run',
     assert.deepEqual(afterInspectorRebuild,{creative:true,wheels:true,amount:30},'a Cliproom inspector rebuild must preserve live section state');
   } finally {await editor.close();}
 });
-test('a slow real-time export warns that frames may be missing',{timeout:60000},async()=>{
+test('a slow real-time export warns that frames may be missing',{timeout:90000},async()=>{
   const png=await fs.readFile(path.join(work,'source.png'));
   const response=await fetch(base+'/api/assets',{method:'POST',headers:{Origin:base,'X-Cliproom-Request':'1','X-File-Type':'image/png','X-File-Name':'slow.png'},body:png});assert.equal(response.status,201);const asset=await response.json();
   const editor=await browser.newPage({acceptDownloads:true,viewport:{width:1440,height:1000}});
@@ -82,10 +82,15 @@ test('a slow real-time export warns that frames may be missing',{timeout:60000},
       project.clips=[{id:crypto.randomUUID(),assetId:meta.id,trackId:project.videoTracks[0].id,start:0,in:0,out:1.2,rate:1,volume:1,fit:'contain',opacity:1,scale:1,x:50,y:50,brightness:100,contrast:100,saturation:100,rotation:0,flipX:false,fadeIn:0,fadeOut:0}];
       setState(project,crypto.randomUUID(),0);await imageFor(asset(meta.id)).decode();const draw=renderFrame,capture=canvas.captureStream.bind(canvas);window.frameRequests=0;window.canCountFrameRequests=false;
       canvas.captureStream=function(...args){const stream=capture(...args),track=stream.getVideoTracks()[0];if(track?.requestFrame){const request=track.requestFrame.bind(track);track.requestFrame=()=>{window.frameRequests++;return request();};window.canCountFrameRequests=true;}return stream;};
-      renderFrame=function(...args){if(recording){const until=performance.now()+200;while(performance.now()<until){}}return draw(...args);};
+      // At most 10 draws per second is well below the 30 fps warning threshold,
+      // while giving the browser encoder time to produce real frames on slow CI.
+      renderFrame=function(...args){if(recording){const until=performance.now()+100;while(performance.now()<until){}}return draw(...args);};
     },asset);
     await editor.locator('#exportBtn').click();assert.match(await editor.locator('#exportModeHint').textContent(),/may drop frames/i);
-    await editor.locator('#exportFormatChoice').selectOption('webm');const [download]=await Promise.all([editor.waitForEvent('download'),editor.locator('#startExportBtn').click()]);assert.ok((await fs.stat(await download.path())).size>100);
+    await editor.locator('#exportFormatChoice').selectOption('webm');
+    const pending=editor.waitForEvent('download',{timeout:60000});await editor.locator('#startExportBtn').click();
+    let download;try{download=await pending;}catch(error){const detail=await editor.evaluate(()=>({status:document.querySelector('#exportStatus').textContent,failure:exportFailure,recording,preparing:exportPreparing}));throw new Error('Video download did not complete: '+JSON.stringify(detail),{cause:error});}
+    assert.ok((await fs.stat(await download.path())).size>100);
     assert.match(await editor.locator('#toast').textContent(),/may be missing frames/i);
     const requests=await editor.evaluate(()=>({supported:window.canCountFrameRequests,count:window.frameRequests}));if(requests.supported)assert.ok(requests.count>0,'completed draws should request capture frames when supported');
   } finally {await editor.close();}

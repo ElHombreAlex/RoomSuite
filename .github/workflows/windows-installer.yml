@@ -65,6 +65,8 @@ jobs:
         run: npm ci --prefix mcp
       - name: Install Chromium
         run: node mcp/node_modules/playwright/cli.js install chromium --only-shell --with-deps
+      - name: Keep test-server ports out of the client ephemeral range
+        run: sudo sysctl -w net.ipv4.ip_local_port_range="45000 65535"
       - name: Test RoomSuite
         run: npm test
       - name: Test the full MCP suite
