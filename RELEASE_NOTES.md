@@ -1,3 +1,9 @@
+## RoomSuite 3.5.0
+
+- **RoomSuite agent skill:** install the bundled skill for task-based guidance across the creative rooms, productivity suites, shared files and notes. It helps agents discover enabled MCP tools, choose a workflow, manage separate file spaces and revisions, and inspect results. See the [skill installation guide](mcp/README.md#install-the-roomsuite-agent-skill).
+- **Clearer MCP discovery:** productivity capability summaries now describe supported all-day and time-zone calendar events, optional CalDAV sync and supported anchored Word comments accurately. Conversion and synchronization limits still apply.
+- **Updating:** the skill and MCP connection are separate. Copy the skill into your agent's skills directory and restart the agent; refresh that copy when RoomSuite is updated. Existing RoomSuite projects remain compatible.
+
 ## RoomSuite 3.2.2
 
 - **Reusable compositions:** MotionRoom groups, sibling attachments with anchors and orientation, reusable symbols with instance overrides, cross-project copies, and parameterized behaviors separate motion from content.

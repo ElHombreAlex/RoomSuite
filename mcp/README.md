@@ -67,6 +67,17 @@ The MCP process, its workspace, and the browser run on the agent's machine. If t
 
 The agent host's sandbox must allow the MCP process to launch Chromium, access its configured workspace, and connect to the RoomSuite URL. If any of those are blocked, the corresponding tool call returns an error.
 
+### Install the RoomSuite agent skill
+
+The optional [RoomSuite skill](skills/roomsuite/SKILL.md) helps a compatible agent discover the MCP tools, choose room workflows, and handle shared files, revisions, previews, and exports. The skill and the MCP connection are separate: copying the skill does not configure MCP or start RoomSuite.
+
+Copy the **entire** `mcp/skills/roomsuite` folder, including its `references` directory, into your agent's skills directory. For Codex, use `~/.agents/skills/roomsuite` (on Windows, `%USERPROFILE%\.agents\skills\roomsuite`); see [where Codex loads skills](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills). The folder is available in a source checkout and in the installers:
+
+- Windows default installation: `%LOCALAPPDATA%\Programs\RoomSuite\mcp\skills\roomsuite`
+- macOS installation: `/Applications/RoomSuite.app/Contents/Resources/app/mcp/skills/roomsuite` (adjust if the app is installed elsewhere)
+
+Restart the agent to pick up the skill. Other skill-compatible agents may use a different skills directory; follow their installation instructions. The installed skill copy does not update itself: when RoomSuite is updated, refresh it from the updated application as well. RoomSuite 3.5.0 is the first release to include the skill.
+
 ### Limit tool schemas for a focused workflow
 
 By default, RoomSuite advertises a small set of common tools together with discovery and invocation tools. Use `roomsuite_find_tools` to search the complete enabled catalog, `roomsuite_tool_schema` to retrieve a selected input schema, and `roomsuite_invoke` to call it with `{"name":"decksuite_get","arguments":{"path":"Pitch.decksuite"}}`. Directly advertised tools can still be called normally. Set `ROOMSUITE_MCP_MODE=full` and reconnect to expose every enabled tool directly, as in earlier releases. Set `ROOMSUITE_MCP_MODE=compact` for only the six discovery, invocation and diagnostic tools.

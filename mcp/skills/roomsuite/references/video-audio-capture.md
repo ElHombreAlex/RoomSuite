@@ -1,0 +1,22 @@
+# Video, audio, and CaptureRoom
+
+Discover and inspect the current schema for each tool before invoking it when it is not directly advertised.
+
+## Cliproom
+
+- `cliproom_import_media` uploads a workspace file into the server media library and returns an asset ID. To use a file from Shared files, download it to the MCP workspace first. `cliproom_list_projects` and `cliproom_get_project` find saved projects and current revisions. `cliproom_save_project` creates from workspace JSON or updates a saved project with its current revision and existing library assets.
+- For a saved project, use `cliproom_edit_timeline` for clips/keyframes and `cliproom_edit_structure` for tracks/titles. Read the current IDs and revision first, use `dry_run` when useful, and supply a fresh UUIDv4 `operation_id` for a write. For a lost response, retry the identical operation with the same ID according to its receipt rules; do not issue a new operation blindly.
+- `cliproom_render` assembles supplied media and optionally saves a project; `cliproom_render_project` renders an existing saved project or workspace project JSON. Both render through the RoomSuite server. **Both include available source-video audio and separate audio tracks by default** (`include_audio` defaults to `true`); set it to `false` only when a silent export is wanted. Output can still be silent if the project has no audible sound or the mix is muted; codecs and render errors also matter. This differs from MotionRoom's silent downloaded render. Uploads remain in the library. Inspect warnings; `roomsuite_preview_video` or `preview_times` can return sampled frames and audio-track metadata, but those do not prove that audio is audible.
+- To check the rendered file's sound, listen if the host supports playback. For a workspace audio/video file or Cliproom `asset_id` up to 3 minutes and 20 MiB, `cliproom_analyze_waveform` can measure peak envelopes if the browser can decode the audio. Nonzero peaks show a decoded signal, not perceived audibility or sound quality; video timing is approximate. If playback or analysis is unavailable, report that sound was not verified.
+- Realtime rendering is the default. Offline mode is WebM-only and supports a subset of media and effects; fall back to realtime when the server reports an unsupported project. The server needs its optional headless dependencies, compatible codecs, and enough time and memory. A render may complete even if previewing it fails.
+- `cliproom_import_subtitles`, `cliproom_generate_subtitles`, and `cliproom_export_subtitles` exchange or create editable cues. Generated spacing is not speech recognition. For transcription, check `cliproom_speech_model_status`; `cliproom_install_speech_model` explicitly downloads an optional model, and `cliproom_transcribe_clip` transcribes one saved clip locally. Review cues before importing them.
+- `cliproom_export_package` and `cliproom_import_package` exchange `.roomclip` projects. For responsive editing, `cliproom_proxy_status`, `cliproom_create_proxy`, and `cliproom_delete_proxy` manage derived previews; exports use originals. `cliproom_audit_media` and the media trash/restore/purge tools manage library cleanup, but audits cannot see open or unsaved projects or external backups; purging is permanent.
+- `cliproom_set_color_mask` sets or removes a revision-checked static color-region mask on a saved clip. The mask follows the picture, not a moving subject; use `dry_run` to inspect the change.
+
+## SoundRoom
+
+`soundroom_session_inspect` reads an editable session and its revision. `soundroom_edit` trims and processes an input or checked session into a new WAV or `.soundroom` file; by default it normalizes to -3 dBFS unless gain settings override it. `soundroom_analyze_loudness` measures a bounded result and is not a certified true-peak meter. `soundroom_handoff_cliproom` sends a processed WAV plus an editable source and settings to Cliproom; use a fresh `handoff_id` and reuse it only for the identical retry.
+
+## CaptureRoom
+
+`captureroom_template_create` and `captureroom_template_inspect` handle portable scene templates. `captureroom_record_scene` can record a prepared image/text scene or supported template. Its MCP interface does not capture a live screen, camera, or microphone, and does not live-stream. To use a visible live-source placeholder, a person must reconnect it and record through the interactive CaptureRoom UI; this live-source limit does not prevent static-scene recording.

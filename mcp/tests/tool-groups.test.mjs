@@ -28,6 +28,10 @@ test('default mode exposes common tools and discovers the rest',async()=>{
     client=new Client({name:'standard-test',version:'1'});await client.connect(new StdioClientTransport({command:process.execPath,args:[mcp],env,stderr:'pipe'}));
     const names=(await client.listTools()).tools.map(tool=>tool.name);assert.ok(names.length<=25);for(const name of ['roomsuite_info','roomsuite_find_tools','roomsuite_tool_schema','roomsuite_invoke','roomsuite_shared_upload','cliproom_render','decksuite_create'])assert.ok(names.includes(name));assert.ok(!names.includes('decksuite_export_pptx'));
     const found=await client.callTool({name:'roomsuite_find_tools',arguments:{query:'decksuite export pptx'}});assert.ok(found.structuredContent.tools.some(tool=>tool.name==='decksuite_export_pptx'));
+    const suites=(await client.callTool({name:'roomsuite_discover_suites',arguments:{}})).structuredContent.suites;
+    const planSupport=suites.plansuite.supports.join(' '),planLimits=suites.plansuite.limits.join(' '),docSupport=suites.docsuite.supports.join(' '),docLimits=suites.docsuite.limits.join(' ');
+    assert.match(planSupport,/all-day/i);assert.match(planSupport,/IANA-zone/i);assert.match(planSupport,/CalDAV/i);assert.doesNotMatch(planLimits,/no calendar sync|all-day.*not.*supported/i);
+    assert.match(docSupport,/anchored comments/i);assert.match(docLimits,/tracked-review metadata.*not exported/i);assert.doesNotMatch(docLimits,/comments and change metadata are not exported/i);
     const invalid=await client.callTool({name:'roomsuite_invoke',arguments:{name:'decksuite_export_pptx',arguments:{}}});assert.equal(invalid.structuredContent.error.code,'INVALID_ARGUMENT');
   }finally{if(client)await client.close();const actual=await fs.realpath(dir),parent=await fs.realpath(os.tmpdir());assert.equal(path.dirname(actual),parent);assert.ok(path.basename(actual).startsWith('roomsuite-groups-'));await fs.rm(actual,{recursive:true,force:true});}
 });

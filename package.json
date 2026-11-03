@@ -1,8 +1,8 @@
 {
   "name": "roomsuite",
-  "version": "3.2.2",
+  "version": "3.5.0",
   "private": true,
-  "description": "A self-hosted creative and productivity workspace",
+  "description": "A self-hosted creative and productivity suite with MCP tools and an agent skill",
   "scripts": {
     "start": "node server.js",
     "test": "node --test cliproom/tests/*.test.js tests/*.test.js"

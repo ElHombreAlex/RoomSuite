@@ -4,7 +4,7 @@
 
 RoomSuite is a self-hosted workspace for creative work, productivity, notes and shared files. Use the launcher switch to choose Creative or Productivity. Each room or suite opens in its own tab or window, so you can work in several at once:
 
-RoomSuite 3 adds shared photo and video grading with portable looks, editable audio sessions, safer shared-file recovery, and improvements across the creative and productivity rooms. Version 3.2.2 adds reusable MotionRoom compositions, linked assets and review tools. See [what's new and known limits](RELEASE_NOTES.md).
+RoomSuite 3.5 includes an installable agent skill that guides AI agents through the suite's MCP tools, creative workflows and productivity rooms. RoomSuite 3 also adds shared photo and video grading, editable audio sessions, safer shared-file recovery and reusable MotionRoom compositions. See [what's new and known limits](RELEASE_NOTES.md).
 
 - **PixelRoom** — photo editing, layers, text and local subject/text isolation.
 - **Cliproom** — a multitrack video editor with a server-backed media and project library.
@@ -276,4 +276,6 @@ The tests cover the existing timeline and server behavior, suite routes, shared 
 
 ## Coding agents
 
-The optional [RoomSuite MCP server](mcp/README.md) lets coding agents search and transfer shared files, create and organize notes, edit and export PaintRoom artwork, manage Cliproom projects, and produce images, audio and animated videos through the rooms. Image-capable agents can [compare frames and inspect the rendered video](mcp/README.md#frame-workflow-for-agents), with stable object IDs, file-based inputs and batch exports to make iteration easier. It runs separately from the normal application and uses isolated browser sessions. Cliproom also offers a [headless project render endpoint](cliproom/README.md#render-from-a-program).
+The optional [RoomSuite MCP server](mcp/README.md) gives agents tools for images, animation, video, audio, shared files, notes, documents, spreadsheets, presentations and calendars. It runs separately from the normal application and uses isolated browser sessions. Image-capable agents can [compare frames and inspect rendered video](mcp/README.md#frame-workflow-for-agents); Cliproom also offers a [headless project render endpoint](cliproom/README.md#render-from-a-program).
+
+RoomSuite 3.5 includes a [skill for compatible agents](mcp/README.md#install-the-roomsuite-agent-skill) that helps them choose tools, navigate the rooms and handle revisions, file locations and previews. Install the skill and configure the MCP connection separately; the installer does not change your agent's settings. The skill discovers enabled tools from the connected server, while its written guidance is refreshed by copying the updated skill after a RoomSuite update.
