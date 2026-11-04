@@ -29,3 +29,6 @@ a{color:inherit} .hidden{display:none!important}
 .button-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
 @media(max-width:1000px){.editor-layout{grid-template-columns:220px minmax(300px,1fr)}.panel.right{grid-column:1/-1;border-left:0;border-top:1px solid var(--line)}.panel.right .panel-section{display:inline-block;vertical-align:top;width:min(100%,280px);padding:10px;margin-right:15px;border:0}}
 @media(max-width:700px){.topbar{height:auto;min-height:64px;padding:12px 14px;flex-wrap:wrap}.top-divider,.top-title{display:none}.top-actions{gap:5px}.top-actions .btn{padding:8px}.editor-layout{display:flex;flex-direction:column}.panel{border-right:0;border-bottom:1px solid var(--line);padding:18px}.panel.left{order:1}.main{order:0;padding:16px}.panel.right{order:2}.panel-section{padding:13px 0}.stage{min-height:200px;padding:10px}.topbar .logo{font-size:15px}}
+
+.logo-mark img{display:block;width:32px;height:32px}.top-title{display:inline-flex;align-items:center;gap:7px}.top-room-icon{width:26px;height:26px;display:block;flex:none}
+@media(max-width:700px){.top-title{display:none}}

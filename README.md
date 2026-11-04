@@ -4,7 +4,7 @@
 
 RoomSuite is a self-hosted workspace for creative work, productivity, notes and shared files. Use the launcher switch to choose Creative or Productivity. Each room or suite opens in its own tab or window, so you can work in several at once:
 
-RoomSuite 3.5 includes an installable agent skill that guides AI agents through the suite's MCP tools, creative workflows and productivity rooms. RoomSuite 3 also adds shared photo and video grading, editable audio sessions, safer shared-file recovery and reusable MotionRoom compositions. See [what's new and known limits](RELEASE_NOTES.md).
+RoomSuite 3.5.1 refreshes the room icons across the launcher, editors and browser tabs. RoomSuite 3.5 includes an installable agent skill that guides AI agents through the suite's MCP tools, creative workflows and productivity rooms. RoomSuite 3 also adds shared photo and video grading, editable audio sessions, safer shared-file recovery and reusable MotionRoom compositions. See [what's new and known limits](RELEASE_NOTES.md).
 
 - **PixelRoom** — photo editing, layers, text and local subject/text isolation.
 - **Cliproom** — a multitrack video editor with a server-backed media and project library.
@@ -187,11 +187,19 @@ Recordings, uploaded images and sketches are stored separately in the `NotesRoom
 
 ## PaintRoom
 
+![Image editing and painting artwork for PixelRoom and PaintRoom.](docs/artwork/roomsuite-image.png)
+
+*Artwork made in RoomSuite, celebrating PixelRoom and PaintRoom.*
+
 Draw with a brush or eraser, choose a built-in brush preset, and use vertical or horizontal symmetry. A compatible pen can vary stroke width with pressure; mirrored strokes remain individually editable. Make lines, rectangles, ellipses and Bézier paths, and move, reorder, hide or transform layers. The Bézier path tool adds points on click and shapes their handles on drag; finish it open or closed. **Edit path** lets you drag points and handles on the selected layer; Alt-drag a point to create an outgoing handle. Each layer groups its objects and can rotate or scale around a chosen pivot. The Lasso tool draws a freeform selection; keep or hide that area as a non-destructive layer mask, then drag mask points to reshape it or remove the mask. Each layer supports one polygon mask, without feathering. Import a supported raster image as a layer. **Save** stores an editable project on the server; **Open** reopens or deletes it, and **Save a copy** resolves a concurrent edit. Export PNG or an editable `.paintroom` file to the device or shared files. SVG export is available for vector-only work without embedded images or eraser strokes. Use **Send to Cliproom** or export a PNG through shared files to animate it there. Projects embed imported images, which are limited to 20 MiB each; editable projects are limited to 32 MiB.
 
 **Send to VectorRoom** saves a file through the shared-file picker and provides a link to open it. Unclipped vector artwork with opaque layers is converted into editable VectorRoom paths, scaled to fit its 1000 × 700 artboard. Individual object opacity is preserved where the appearance can be represented faithfully; hidden layers are omitted and layer grouping is flattened. Photos, eraser strokes, partially transparent layers, clipped artwork and certain translucent fill-and-outline combinations cannot be faithfully converted into editable paths. For those projects you can choose to send a flattened PNG instead; the original remains editable in PaintRoom. The shared copy remains on the server until deleted. You can also save a PaintRoom project on the server and use **Fetch from PaintRoom** inside VectorRoom to add its editable objects to the current artwork without replacing it. Unsupported projects show an explanation and are not silently flattened.
 
 ## MotionRoom
+
+![Motion, video and sound artwork for MotionRoom, Cliproom and SoundRoom.](docs/artwork/roomsuite-time.png)
+
+*Artwork made in RoomSuite, celebrating MotionRoom, Cliproom and SoundRoom.*
 
 Start a composition with a stage up to 4096 × 4096, or open a `.paintroom` or `.vectorroom` project from your device or Shared files. PaintRoom and VectorRoom also offer **Send to MotionRoom**. Use **Add artwork** to put one source behind the layers of an existing composition without changing its stage. The stage dimensions can be changed independently of the imported artboard; imported objects keep their original coordinates. Add text, shapes, images and a lens, and reorder layers with **Forward** and **Backward**. The lens magnifies the live composition below it. Text supports keyframed character reveal, Bricolage Grotesque and Gelasio, and imported WOFF, WOFF2, TTF or OTF fonts. Imported fonts are embedded in the project; the bundled fonts and their licenses are in `MotionRoom/fonts/`.
 
@@ -215,7 +223,7 @@ For text in an image, use **Isolate → Find text areas**, choose or draw a sele
 
 ## Check an update
 
-After replacing source or installed files, restart the RoomSuite backend and restart each agent that uses MCP. With the optional MCP dependencies installed, set `ROOMSUITE_MCP_URL` if the backend is not at its default address and run `node mcp/check-deployment.mjs` from the updated installation. For the Windows installer, use its bundled runtime instead: in PowerShell, run `& "$env:LOCALAPPDATA\Programs\RoomSuite\runtime\node.exe" "$env:LOCALAPPDATA\Programs\RoomSuite\mcp\check-deployment.mjs"`. A successful result has `ok: true`; a mismatch or an older backend returns a nonzero exit status. The check compares process startup fingerprints with current code, then hashes the served HTML, CSS and JavaScript. It checks the newly launched MCP process, not other already-running agent processes. Ask each connected agent to call `roomsuite_check_deployment` to check its own MCP process. It does not verify browser caches, media/model assets or installed dependency contents. The Windows launcher runs this check before showing Ready when MCP is installed, and the installer smoke test checks fresh and upgraded installations.
+After replacing source or installed files, restart the RoomSuite backend and restart each agent that uses MCP. With the optional MCP dependencies installed, set `ROOMSUITE_MCP_URL` if the backend is not at its default address and run `node mcp/check-deployment.mjs` from the updated installation. For the Windows installer, use its bundled runtime instead: in PowerShell, run `& "$env:LOCALAPPDATA\Programs\RoomSuite\runtime\node.exe" "$env:LOCALAPPDATA\Programs\RoomSuite\mcp\check-deployment.mjs"`. A successful result has `ok: true`; a mismatch or an older backend returns a nonzero exit status. The check compares process startup fingerprints with current code, then hashes the served HTML, CSS, JavaScript, SVG icons and bundled fonts. It checks the newly launched MCP process, not other already-running agent processes. Ask each connected agent to call `roomsuite_check_deployment` to check its own MCP process. It does not verify browser caches, media/model assets or installed dependency contents. The Windows launcher runs this check before showing Ready when MCP is installed, and the installer smoke test checks fresh and upgraded installations.
 
 ## Storage and backups
 
@@ -257,6 +265,10 @@ With **Keep a recovery copy in this browser** enabled, CaptureRoom writes record
 The browser asks for permission for each screen-sharing session. Screen or system audio may not be offered, and mobile screen capture support varies. Camera/microphone availability also depends on permissions and hardware. Keep the tab open and visible during recording; browsers and mobile operating systems may pause or throttle background capture. Recordings can consume substantial memory.
 
 ## VectorRoom
+
+![Vector illustration artwork showing an editable Bézier curve.](docs/artwork/roomsuite-vector.png)
+
+*Artwork made in RoomSuite, celebrating VectorRoom.*
 
 Draw rectangles, ellipses, lines and text. With the pen, click to add points and drag to create Bézier handles; finish or close the path, then use **Edit nodes** to adjust points and handles. The inspector controls fills, gradients, outlines, opacity, rotation and text. Drag the selection's handles to resize or rotate (Shift keeps proportions or snaps rotation to 15°), duplicate objects, reorder them, or nudge them with the arrow keys (Shift moves 10 pixels). Undo and redo are available from the toolbar or keyboard. Toggle grid snapping when helpful. Use **Fetch from PaintRoom** to add supported saved artwork as editable paths.
 

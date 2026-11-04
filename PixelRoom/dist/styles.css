@@ -9,3 +9,5 @@
 #subjectControls{display:grid;gap:4px;margin-bottom:12px}.mask-view-button{margin-top:14px}#maskHint{min-height:2.4em}
 .canvas-wrap.letters-preview{background-color:#54545a;background-image:linear-gradient(45deg,#6d6d74 25%,transparent 25%),linear-gradient(-45deg,#6d6d74 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#6d6d74 75%),linear-gradient(-45deg,transparent 75%,#6d6d74 75%)}
 .dialog{max-height:calc(100dvh - 32px);overflow:auto}.conversion-status{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;color:#969690;font-size:10px;line-height:1.45}.conversion-status span{flex:1}.conversion-status .text-button{white-space:nowrap}.dialog .color-wrap{height:40px}
+
+.brand-icon{width:34px;height:34px;object-fit:contain;flex:none}

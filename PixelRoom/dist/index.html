@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#f7f7f5">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'self'">
   <meta name="description" content="A private, browser-based image editor.">
-  <title>Pixelroom — your little creative space</title>
+  <title>Pixelroom — your little creative space</title><link rel="icon" type="image/svg+xml" href="./room-icon.svg" media="(prefers-color-scheme: light)"><link rel="icon" type="image/svg+xml" href="./room-icon-light.svg" media="(prefers-color-scheme: dark)">
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="/suite/shared.css">
   <link rel="stylesheet" href="./color-grade.css">
@@ -35,7 +35,7 @@
     <symbol id="i-move" viewBox="0 0 24 24"><path d="M12 2v20M2 12h20M9 5l3-3 3 3M9 19l3 3 3-3M5 9l-3 3 3 3M19 9l3 3-3 3"/></symbol>
   </defs></svg>
   <header class="topbar">
-    <div class="brand"><span class="brand-mark"><span></span><span></span><span></span><span></span></span><span>pixelroom<span class="brand-dot">.</span></span></div>
+    <div class="brand"><img class="brand-icon" src="./room-icon.svg" alt="" aria-hidden="true"><span>pixelroom<span class="brand-dot">.</span></span></div>
     <div class="document-name"><input id="projectName" aria-label="Project name" value="A little escape" maxlength="60"><span class="doc-subtitle"><span class="status-dot"></span> YOUR CREATIVE SPACE</span></div>
     <div class="header-actions">
       <div class="history-actions"><button class="icon-button" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo"><svg><use href="#i-undo"/></svg></button><button class="icon-button" id="redoBtn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><svg><use href="#i-redo"/></svg></button></div>

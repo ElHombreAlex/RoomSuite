@@ -1,3 +1,9 @@
+## RoomSuite 3.5.1
+
+- **Refined room icons:** a coordinated set for all creative and productivity rooms, with redesigned PixelRoom, Cliproom and NotesRoom marks and an updated RoomSuite arch. CaptureRoom uses the original viewfinder icon. Icons appear in the launcher, room headers and browser tabs, including standalone Pixelroom and Cliproom.
+- **Artwork showcase:** the README features artwork made in RoomSuite for image editing and painting, vector design, and motion, video and sound.
+- **Update checks:** the deployment check now includes SVG assets, so changes to room icons are included in frontend verification.
+
 ## RoomSuite 3.5.0
 
 - **RoomSuite agent skill:** install the bundled skill for task-based guidance across the creative rooms, productivity suites, shared files and notes. It helps agents discover enabled MCP tools, choose a workflow, manage separate file spaces and revisions, and inspect results. See the [skill installation guide](mcp/README.md#install-the-roomsuite-agent-skill).

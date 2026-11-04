@@ -9,7 +9,7 @@
   let selectedCell='A1',selectedSlide=0,selectedDay=new Date(),month=new Date(selectedDay.getFullYear(),selectedDay.getMonth(),1),editingEvent=null,savedSelection=null,calendarView='month';
   let selectedElements=new Set(),elementNodes=new Map();
   let calendarStartupActive=kind==='plansuite',calendarStartupToken=0,importCalendar,importDeckTemplate,docText='',commentRefresh=0,docPendingEdit=null,suppressTracking=false,lastTrackResult=null;
-  document.title=name+' — RoomSuite';$('suiteName').textContent=name;$('suiteLabel').textContent=label;$(section).hidden=false;
+  document.title=name+' — RoomSuite';$('suiteName').textContent=name;$('suiteIcon').src='/suite/icons/ink/'+section+'.svg';$('faviconInk').href='/suite/icons/ink/'+section+'.svg';$('faviconLight').href='/suite/icons/light/'+section+'.svg';$('suiteLabel').textContent=label;$(section).hidden=false;
   if(officeExt){$('officeImport').hidden=false;$('officeExport').hidden=false;$('officeShared').hidden=false;$('officeImport').textContent='Import '+officeExt;$('officeExport').textContent='Export '+officeExt;$('officeShared').textContent=officeExt+' to shared';$('officeInput').accept=officeExt;}
   function status(message,error=false){$('status').textContent=message;$('status').classList.toggle('error',error);}
   function stopCalendarStartup(){if(!calendarStartupActive)return;calendarStartupActive=false;calendarStartupToken++;if(/^(Looking for saved calendars|Opening saved calendar)/.test($('status').textContent))status('Unsaved');}
