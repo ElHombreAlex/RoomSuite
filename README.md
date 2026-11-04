@@ -1,10 +1,14 @@
 # RoomSuite
 
+![An animated RoomSuite door opening to celebrate version 3.5.](docs/artwork/roomsuite-door-open.gif)
+
+*Made in RoomSuite to celebrate version 3.5.*
+
 [![M8ven Verified](https://m8ven.ai/badge/mcp/elhombrealex-roomsuite-ldiexw?v=3bde4cfd106648272d338ebb0d5a4afb&variant=verified)](https://m8ven.ai/mcp/elhombrealex-roomsuite-ldiexw?s=readme)
 
 RoomSuite is a self-hosted workspace for creative work, productivity, notes and shared files. Use the launcher switch to choose Creative or Productivity. Each room or suite opens in its own tab or window, so you can work in several at once:
 
-RoomSuite 3.5.1 refreshes the room icons across the launcher, editors and browser tabs. RoomSuite 3.5 includes an installable agent skill that guides AI agents through the suite's MCP tools, creative workflows and productivity rooms. RoomSuite 3 also adds shared photo and video grading, editable audio sessions, safer shared-file recovery and reusable MotionRoom compositions. See [what's new and known limits](RELEASE_NOTES.md).
+RoomSuite 3.5.2 refreshes the launcher and room interfaces with a shared ink, paper and flame identity. RoomSuite 3.5.1 introduced the coordinated room icons. RoomSuite 3.5 includes an installable agent skill that guides AI agents through the suite's MCP tools, creative workflows and productivity rooms. RoomSuite 3 also adds shared photo and video grading, editable audio sessions, safer shared-file recovery and reusable MotionRoom compositions. See [what's new and known limits](RELEASE_NOTES.md).
 
 - **PixelRoom** — photo editing, layers, text and local subject/text isolation.
 - **Cliproom** — a multitrack video editor with a server-backed media and project library.

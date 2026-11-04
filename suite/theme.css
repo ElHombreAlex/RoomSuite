@@ -1,0 +1,143 @@
+/* Shared RoomSuite identity: ink, warm paper and a small flame accent. */
+:root {
+  --ink: #101216;
+  --muted: #625e58;
+  --line: #dcd5c9;
+  --paper: #fffdf8;
+  --bg: #f3efe7;
+  --purple: #a52d13;
+  --dark: #101216;
+  --lav: #fae9de;
+  --peach: #fff0e6;
+  --green: #e5f0e5;
+  --shadow: 0 10px 30px #1012160a;
+  --flame: #ff4a1f;
+}
+
+body { background: var(--bg); color: var(--ink); }
+button:focus-visible, a:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible {
+  outline: 3px solid #c43b1c;
+  outline-offset: 2px;
+}
+.topbar { background: var(--paper); border-bottom-color: #d5cec2; }
+.logo { color: var(--ink); }
+.logo-mark { background: var(--ink); border-radius: 5px; }
+.top-divider { background: #d5cec2; }
+.top-title { color: #5e5a54; }
+.dot { color: var(--purple); }
+.eyebrow { color: #746d63; letter-spacing: .14em; }
+.muted, .hint { color: var(--muted); }
+.hint strong { color: var(--ink); }
+.section-title, .motion-panel h1, .paint-panel h1, .notes-sidebar h1,
+.notes-empty h2, .files-heading h1, .files-nav h2, .suite-dialog h2,
+.paint-dialog h2, .sketch-dialog h2, .move-dialog h2 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 700;
+  letter-spacing: -.035em;
+}
+
+.btn, .tool {
+  border-color: #d4cbbd;
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink);
+}
+.btn:hover:not(:disabled), .tool:hover:not(:disabled) {
+  border-color: #a52d13;
+  background: #fff3e9;
+  color: var(--ink);
+}
+.btn.primary { background: var(--ink); border-color: var(--ink); color: #fffdf8; }
+.btn.primary:hover:not(:disabled) { background: #36342f; border-color: #36342f; color: #fffdf8; }
+.btn.accent { background: var(--flame); border-color: var(--flame); color: #101216; }
+.btn.accent:hover:not(:disabled) { background: #e83d18; border-color: #e83d18; color: #101216; }
+.btn.danger { color: #a7271b; }
+.tool.active, .editor-toolbar button[aria-pressed=true], .sketch-tools button.active {
+  background: #fce9dd;
+  border-color: #df7557;
+  color: #76250f;
+}
+.pill { background: #eee7db; color: #4b463f; border-radius: 4px; }
+.notice { background: #f8eadc; color: #594b40; border-radius: 4px; }
+.status { color: #625e58; }
+
+.panel, .motion-panel, .paint-panel, .notes-sidebar { background: var(--paper); }
+.card, .attachment-tools, .note-links, .agenda, .chart-display {
+  background: var(--paper);
+  border-color: var(--line);
+  border-radius: 5px;
+}
+.stage, .paint-stage, .motion-stage { background: #e9e3d9; border-color: #d8d0c4; border-radius: 5px; }
+.stage-empty { background: #e9e3d9; }
+.stage-empty span { color: #b63216; }
+.field { color: #534e47; }
+.field input:not([type=checkbox]):not([type=range]):not([type=color]),
+.field select, .field textarea, .field input[type=color],
+.file-search, .files-search-options select, .tools select, .formula {
+  background: #fffdf9;
+  border-color: #d4cbbd;
+  border-radius: 4px;
+  color: var(--ink);
+}
+input[type=range], input[type=checkbox], input[type=radio] { accent-color: #bb3519; }
+.list-item, .note-item, .motion-layer, .layer-item, .file-row, .agenda-event {
+  background: #fbf8f1;
+  border-color: #e5ddd1;
+  border-radius: 4px;
+}
+.list-item.active, .note-item.active, .motion-layer.active, .layer-item.active,
+.slide-item.active, .sheet-tab.active {
+  background: #fce9dd;
+  border-color: #df7557;
+  color: #76250f;
+}
+.empty, .file-empty { background: #fbf8f1; border-color: #d9cfc0; border-radius: 5px; }
+.empty-icon, .file-icon { background: #fbe7d9; color: #ac3015; border-radius: 5px; }
+.upload { background: #fbf5eb; border-color: #d8c6b8; border-radius: 5px; color: #9b2e16; }
+.upload span { color: #625e58; }
+#waveform { background: #fbf8f1; border-color: #e5ddd1; border-radius: 5px; }
+.wave-head > span { color: #9b2e16; }
+.wave-card .ruler { color: #746d63; }
+.source-icon { background: #fbe7d9; color: #a52d13; border-radius: 4px; }
+.markdown a, .note-media-controls a, .doc-paper a { color: #a52d13; }
+.markdown pre, .markdown code { background: #f3ede3; }
+#body, .markdown { background: #fffdf9; border-color: var(--line); border-radius: 5px; }
+.dictation-panel, .note-media { background: #faf4ea; border-color: var(--line); border-radius: 5px; }
+.marker { color: #b4371b; }
+.marker.current { color: #101216; }
+.motion-main .ruler { color: #746d63; }
+.storage-bar { background: #e7ded1; }
+.storage-bar span { background: #e34621; }
+.file-row.drop-target, #up.drop-target { outline-color: #b4371b; background: #fff0e6; }
+.move-folder { background: #fbf8f1; border-color: var(--line); border-radius: 4px; }
+.move-folder:hover, .move-folder:focus-visible { background: #fff0e6; border-color: #df7557; }
+
+.tools { background: var(--paper); border-color: var(--line); border-radius: 5px; }
+.grid-wrap { border-radius: 5px; }
+.grid-wrap th { background: #eee8de; color: #514c45; }
+.grid-wrap input:focus { outline-color: #bc381b; background: #fff5ed; }
+.cell-reference { color: #9b2e16; }
+.weekdays span { color: #71695f; }
+.day.outside { color: #aaa197; background: #faf7f1; }
+.day.selected { background: #fff0e6; box-shadow: inset 0 0 0 2px #c94d2e; }
+.day.today .day-number { color: #a52d13; }
+.day-event { background: #fce8dc; color: #76250f; border-radius: 3px; }
+.slide-item, .sheet-tab { border-radius: 4px; }
+.sheet-tab { color: #625e58; }
+.slide-extra.selected { outline-color: #c43b1c; }
+.doc-paper:focus { outline-color: #c94d2e; }
+
+.shared-picker, .paint-dialog, .sketch-dialog, .move-dialog, .suite-dialog {
+  background: var(--paper); color: var(--ink); border: 1px solid var(--line); border-radius: 6px;
+}
+.shared-picker button:focus-visible, .shared-picker input:focus-visible { outline-color: #c43b1c; }
+.shared-item { background: #fbf8f1; border-color: var(--line); border-radius: 4px; color: var(--ink); }
+.shared-item:hover { background: #fff0e6; border-color: #df7557; }
+.shared-close { background: #eee8de; color: var(--ink); border-radius: 4px; }
+.shared-actions button { border-color: var(--line); border-radius: 4px; }
+.shared-actions .shared-save { background: var(--ink); border-color: var(--ink); color: #fffdf8; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}

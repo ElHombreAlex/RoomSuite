@@ -49,14 +49,14 @@ function render() {
 }
 function draw() {
   const w = canvas.width, h = canvas.height;
-  ctx.clearRect(0, 0, w, h); ctx.fillStyle = '#faf9fd'; ctx.fillRect(0, 0, w, h);
+  ctx.clearRect(0, 0, w, h); ctx.fillStyle = '#fbf8f1'; ctx.fillRect(0, 0, w, h);
   if (!buffer) {
-    ctx.fillStyle = '#c1b9d6'; ctx.font = 'bold 22px system-ui'; ctx.textAlign = 'center';
+    ctx.fillStyle = '#a39a8d'; ctx.font = 'bold 22px system-ui'; ctx.textAlign = 'center';
     ctx.fillText('Your audio will appear here', w / 2, h / 2); return;
   }
   const duration = buffer.duration, samples = buffer.getChannelData(0);
-  if (selection) { ctx.fillStyle = '#e9e4ff'; ctx.fillRect(selection[0] / duration * w, 0, (selection[1] - selection[0]) / duration * w, h); }
-  ctx.strokeStyle = '#8f79dd'; ctx.lineWidth = 1.5; ctx.beginPath();
+  if (selection) { ctx.fillStyle = '#f9dfce'; ctx.fillRect(selection[0] / duration * w, 0, (selection[1] - selection[0]) / duration * w, h); }
+  ctx.strokeStyle = '#b84929'; ctx.lineWidth = 1.5; ctx.beginPath();
   const stride = Math.max(1, Math.floor(samples.length / w));
   for (let x = 0; x < w; x++) {
     const from = Math.floor(x * samples.length / w), to = Math.min(samples.length, from + stride);
@@ -67,7 +67,7 @@ function draw() {
   ctx.stroke();
   ctx.strokeStyle = '#e3a982'; ctx.setLineDash([5, 5]);
   for (const mark of markers) { const x = mark / duration * w; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
-  ctx.setLineDash([]); ctx.strokeStyle = '#4c3da2'; ctx.lineWidth = 2;
+  ctx.setLineDash([]); ctx.strokeStyle = '#8f260e'; ctx.lineWidth = 2;
   const x = cursor / duration * w; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
 }
 async function openBlob(blob, name) {

@@ -1,0 +1,45 @@
+/* RoomSuite's shared ink-and-flame identity, kept local for standalone PixelRoom. */
+:root { --ink:#101216; --muted:#625e58; --line:#dcd5c9; --purple:#a52d13; --pale:#fae9de; --accent:#e58b6e; --bg:#f3efe7; }
+body { background:var(--bg); color:var(--ink); }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline-color:#c43b1c; }
+.topbar { background:#fffdf8; border-color:#d5cec2; }
+.brand-dot, .heading-dot { color:#a52d13; }
+.document-name { border-color:#dcd5c9; }
+.doc-subtitle, .eyebrow, .section-label { color:#746d63; }
+.panel-head h1, .inspector h2, .dialog h2 { font-family:Georgia,'Times New Roman',serif; font-weight:700; letter-spacing:-.035em; }
+.tool-panel, .inspector, .rail { background:#fffdf8; border-color:#dcd5c9; }
+.icon-button { color:#625e58; border-radius:4px; }
+.icon-button:hover { background:#f5ecdf; color:#101216; }
+.button { border-radius:4px; }
+.button-dark { background:#101216; color:#fffdf8; }
+.button-dark:hover { background:#36342f; }
+.button-accent { background:#ff4a1f; color:#101216; }
+.button-accent:hover { background:#e83d18; color:#101216; }
+.button-outline { border-color:#d4cbbd; background:#fffdf8; color:#101216; }
+.button-outline:hover, .button-quiet:hover { background:#fff1e6; }
+.rail-button { color:#6e685f; border-radius:4px; }
+.rail-button:hover, .rail-button.active { background:#fce9dd; color:#9c2a12; }
+.panel-spark, .panel-bottom-note svg, .tool-footer .text-button { color:#ac3015; }
+.section-label > span:last-child, .properties-heading .spark { color:#b4371b; }
+.tiny-spark, .slider-label output { color:#a52d13; }
+.feature-icon, .inspector-heading .icon-button { background:#f8e7da; color:#a52d13; }
+.section-intro, .inspector-intro, .mini-hint { color:#625e58; }
+.upload-card { border-color:#d8c6b8; border-radius:5px; background:#fbf5eb; }
+.upload-card:hover { border-color:#c34a2c; background:#fff0e5; }
+.upload-icon, .quick-icon { background:#f8e7da; color:#a52d13; border-radius:4px; }
+.quick-tool, .quick-wide, .upload-pill { border-color:#e2d9cc; border-radius:4px; }
+.quick-tool:hover, .quick-wide:hover { border-color:#c34a2c; }
+.text-button { color:#a52d13; }
+input[type=range], input[type=checkbox], input[type=radio] { accent-color:#bb3519; }
+.layer-row.selected, .property-buttons button.active { background:#fce9dd; border-color:#df7557; color:#76250f; }
+.mask-tools button.active, .detected-list button.active { background:#fce9dd; border-color:#df7557; color:#76250f; }
+.field-label input:not([type=range]), .field-label select, .field-label textarea { border-color:#d4cbbd; border-radius:4px; }
+.field-label input:focus, .field-label select:focus, .field-label textarea:focus { border-color:#c43b1c; }
+.dialog { background:#fffdf8; border:1px solid #dcd5c9; border-radius:6px; }
+.shared-picker { background:#fffdf8; color:#101216; border:1px solid #dcd5c9; border-radius:6px; }
+.shared-item { background:#fbf8f1; border-color:#dcd5c9; color:#101216; border-radius:4px; }
+.shared-item:hover { background:#fff0e6; border-color:#df7557; }
+.shared-actions .shared-save { background:#101216; border-color:#101216; color:#fffdf8; }
+.mobile-nav { background:#fffdf8; border-color:#dcd5c9; }
+.mobile-nav button { color:#6b655d; }
+.mobile-nav button.active { color:#a52d13; }

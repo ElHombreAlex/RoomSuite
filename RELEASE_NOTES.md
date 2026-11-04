@@ -1,3 +1,9 @@
+## RoomSuite 3.5.2
+
+- **A shared visual identity:** the launcher and room interfaces now use a coordinated ink, warm-paper and flame palette, refined controls and typography inspired by the RoomSuite icons. PixelRoom and Cliproom keep the refreshed styling when run independently.
+- **RoomSuite-made animation:** the README opens with an animated door celebrating RoomSuite 3.5.
+- **Compatibility:** this release changes presentation, not project formats or the way work is stored.
+
 ## RoomSuite 3.5.1
 
 - **Refined room icons:** a coordinated set for all creative and productivity rooms, with redesigned PixelRoom, Cliproom and NotesRoom marks and an updated RoomSuite arch. CaptureRoom uses the original viewfinder icon. Icons appear in the launcher, room headers and browser tabs, including standalone Pixelroom and Cliproom.

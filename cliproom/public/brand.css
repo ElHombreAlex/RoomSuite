@@ -1,0 +1,46 @@
+/* RoomSuite's shared ink-and-flame identity, kept local for standalone Cliproom. */
+:root { --ink:#101216; --muted:#625e58; --line:#dcd5c9; --purple:#a52d13; --pale:#fae9de; --bg:#f3efe7; }
+body { background:var(--bg); color:var(--ink); }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline-color:#c43b1c; }
+.topbar { background:#fffdf8; border-color:#d5cec2; }
+.document-name { border-color:#dcd5c9; }
+.document-name label, .eyebrow, .section-label { color:#746d63; }
+.panel-heading h1, .stage-heading h2, .inspector h2, .timeline-top h2, .dialog h2 { font-family:Georgia,'Times New Roman',serif; font-weight:700; letter-spacing:-.035em; }
+.library, .inspector, .timeline-panel { background:#fffdf8; border-color:#dcd5c9; }
+.icon-button { color:#625e58; border-radius:4px; }
+.icon-button:hover { background:#f5ecdf; color:#101216; }
+.button { border-radius:4px; }
+.button-accent { background:#ff4a1f; color:#101216; }
+.button-accent:hover { background:#e83d18; color:#101216; }
+.button-outline { border-color:#d4cbbd; background:#fffdf8; color:#101216; }
+.button-outline:hover, .button-quiet:hover { background:#fff1e6; }
+.spark, .library-foot svg { color:#ac3015; }
+.intro, .mini-hint, .library-foot { color:#625e58; }
+.upload-card { border-color:#d8c6b8; border-radius:5px; background:#fbf5eb; }
+.upload-card:hover { border-color:#c34a2c; background:#fff0e5; }
+.upload-icon, .export-icon, .media-icon { background:#f8e7da; color:#a52d13; border-radius:4px; }
+.upload-pill, .media-item, .tiny-button { border-color:#e2d9cc; border-radius:4px; }
+.media-add { color:#a52d13; border-color:#d4cbbd; border-radius:4px; }
+.media-add:hover, .tiny-button:hover { background:#fff0e6; }
+.badge { background:#eee7db; color:#504a42; border-radius:4px; }
+.empty-film { color:#f6ebda; }
+.empty-library span, .inspector-note span { color:#b4371b; }
+.clip { border-color:#dfb49f; background:#f4e1d5; color:#573526; }
+.clip small { color:#765344; }
+.playhead, .playhead span { background:#e34621; }
+.track-toggle { color:#a52d13; }
+.track-toggle:hover { background:#fce9dd; }
+.track-label, .tick, .timeline-hint, .preview-label, .library-targets label { color:#6b655d; }
+.progress { background:#ede5da; }
+.progress span { background:#e34621; }
+.stage-selection { border-color:#e34621; }
+.stage-selection-label { background:#ff4a1f; color:#101216; }
+.field input:not([type=range]):not([type=color]), .field select, .field textarea, .field input[type=color] { border-color:#d4cbbd; border-radius:4px; }
+input[type=range], input[type=checkbox], input[type=radio] { accent-color:#bb3519; }
+.clip.selected, .overlay.selected { outline-color:#c43b1c; }
+.dialog { background:#fffdf8; border:1px solid #dcd5c9; border-radius:6px; }
+.shared-picker { background:#fffdf8; color:#101216; border:1px solid #dcd5c9; border-radius:6px; }
+.shared-item { background:#fbf8f1; border-color:#dcd5c9; color:#101216; border-radius:4px; }
+.shared-item:hover { background:#fff0e6; border-color:#df7557; }
+.shared-actions .shared-save { background:#101216; border-color:#101216; color:#fffdf8; }
+@media(max-width:390px) { .brand-icon { display:block; width:23px; height:23px; } }
