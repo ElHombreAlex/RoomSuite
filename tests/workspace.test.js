@@ -25,6 +25,7 @@ after(async () => {
 });
 
 test('shared files support folders, transfers and safe moves with limits', async () => {
+  const missingParent=await upload('Missing/child.txt','hello');assert.equal(missingParent.status,404);assert.match((await missingParent.json()).error,/destination folder.*Missing/i);
   assert.equal((await request('/api/workspace/folder','POST',{path:'Photos'})).status,201);
   assert.equal((await upload('Photos/café.txt','hello')).status,201);
   assert.equal((await upload('Photos/café.txt','replace')).status,409);

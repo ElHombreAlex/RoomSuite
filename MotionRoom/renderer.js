@@ -62,7 +62,21 @@
   async function loadFont(font){
     const binary=atob(font.data.slice(font.data.indexOf(',')+1)),bytes=Uint8Array.from(binary,c=>c.charCodeAt(0)),digest=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));
     const key=Array.from(digest,b=>b.toString(16).padStart(2,'0')).join(''),family='MotionRoom-'+key;
-    if(!loadedFonts.has(key)){try{const face=new FontFace(family,bytes);await face.load();if(loadedFonts.size>=32){const oldest=loadedFonts.keys().next().value;document.fonts.delete(loadedFonts.get(oldest));loadedFonts.delete(oldest);}document.fonts.add(face);loadedFonts.set(key,face);}catch{throw new Error('Could not load the embedded font “'+font.name+'”.');}}
+    if(loadedFonts.has(key)){const face=loadedFonts.get(key);loadedFonts.delete(key);loadedFonts.set(key,face);}
+    if(!loadedFonts.has(key)){try{const face=new FontFace(family,bytes);await face.load();if(loadedFonts.size>=128){const oldest=loadedFonts.keys().next().value;document.fonts.delete(loadedFonts.get(oldest));loadedFonts.delete(oldest);}document.fonts.add(face);loadedFonts.set(key,face);}catch{throw new Error('Could not load the embedded font “'+font.name+'”.');}}
+    return family;
+  }
+  async function loadVariableFont(text,font,baseFamily){
+    const axes=Object.entries(text.fontVariations).sort(([a],[b])=>a.localeCompare(b)),settings=axes.map(([tag,value])=>`"${tag}" ${value}`).join(', '),bundled=!font;
+    const style=bundled&&text.font==='Gelasio'&&text.style==='italic'?'italic':'normal';
+    const descriptor=JSON.stringify([baseFamily,style,axes]),digest=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(descriptor))),key='variant-'+Array.from(digest,b=>b.toString(16).padStart(2,'0')).join(''),family='MotionRoom-'+key;
+    if(loadedFonts.has(key)){const face=loadedFonts.get(key);loadedFonts.delete(key);loadedFonts.set(key,face);}
+    if(!loadedFonts.has(key)){
+      const file=text.font==='Bricolage Grotesque'?'BricolageGrotesque.ttf':style==='italic'?'Gelasio-Italic.ttf':'Gelasio.ttf';
+      const source=bundled?`url("/motionroom/fonts/${file}")`:Uint8Array.from(atob(font.data.slice(font.data.indexOf(',')+1)),c=>c.charCodeAt(0));
+      try{const options={variationSettings:settings,...(bundled?{style,weight:text.font==='Gelasio'?'400 700':'200 800'}:{})},face=new FontFace(family,source,options);if(!('variationSettings' in face))throw new Error('Font variations are unsupported by this browser.');await face.load();if(loadedFonts.size>=128){const oldest=loadedFonts.keys().next().value;document.fonts.delete(loadedFonts.get(oldest));loadedFonts.delete(oldest);}document.fonts.add(face);loadedFonts.set(key,face);}
+      catch(error){throw new Error('Could not load font variations for “'+text.font+'”: '+error.message);}
+    }
     return family;
   }
   async function prepare(project){
@@ -76,12 +90,14 @@
     const result=[];
     for(const font of project.fonts||[])fonts.set(font.id,await loadFont(font));
     for(const layer of expanded)if(layer.kind==='text'&&['Bricolage Grotesque','Gelasio'].includes(layer.text.font)){const text=layer.text,faces=await document.fonts.load(`${text.style} ${text.weight} ${text.fontSize}px "${text.font}"`);if(!faces.length)throw new Error('The bundled font '+text.font+' could not be loaded.');}
+    const variants=new Map(),specs=new Set(),fontById=new Map((project.fonts||[]).map(font=>[font.id,font]));
+    for(const layer of expanded)if(layer.kind==='text'&&layer.text.fontVariations){const text=layer.text,spec=JSON.stringify([text.font,text.font==='Gelasio'?text.style:'normal',Object.entries(text.fontVariations).sort(([a],[b])=>a.localeCompare(b))]);specs.add(spec);if(specs.size>32)throw new Error('A composition supports at most 32 different variable-font configurations.');variants.set(layer.id,await loadVariableFont(text,fontById.get(text.font),fonts.get(text.font)||text.font));}
     const usedAssets=new Set(expanded.filter(layer=>layer.kind==='image').map(layer=>layer.image.assetId));for(const asset of project.assets||[])if(usedAssets.has(asset.id)){if(asset.data)assets.set(asset.id,await imageFor(asset.data));else{let url;try{const key='shared:'+asset.sharedPath;if(images.has(key))assets.set(asset.id,images.get(key));else{const file=await RoomShared.get(asset.sharedPath,{maxBytes:20*1024*1024});url=URL.createObjectURL(file);assets.set(asset.id,await imageFor(url,key));}}catch(error){if(error.code==='MOTION_PIXEL_BUDGET')throw error;assets.set(asset.id,null);missing.push({id:asset.id,sharedPath:asset.sharedPath});}finally{if(url)URL.revokeObjectURL(url);}}}
     const byId=new Map();
     for(const layer of expanded){
       let item;if(layer.kind==='paint')item=await paintLayer(project,project.source.layers[layer.sourceIndex],images,remaining);
       else if(layer.kind==='vector')item=await vectorLayer(project.source.objects[layer.sourceIndex],1000,700,remaining);
-      else if(layer.kind==='text')item={anchor:{x:layer.text.x,y:layer.text.y},font:fonts.get(layer.text.font)||layer.text.font};
+      else if(layer.kind==='text')item={anchor:{x:layer.text.x,y:layer.text.y},font:variants.get(layer.id)||fonts.get(layer.text.font)||layer.text.font};
       else if(layer.kind==='shape')item={anchor:{x:layer.shape.x+layer.shape.width/2,y:layer.shape.y+layer.shape.height/2}};
       else if(layer.kind==='image')item={anchor:{x:layer.image.x+layer.image.width/2,y:layer.image.y+layer.image.height/2},image:assets.get(layer.image.assetId)};
       else if(layer.kind==='lens')item={anchor:{x:layer.lens.x,y:layer.lens.y}};
@@ -139,7 +155,7 @@
     function pose(layer){
       if(poses.has(layer.id))return poses.get(layer.id);const item=prepared.byId.get(layer.id),value=MotionModel.sampleAnimated(layer,time,project);let cx=item.anchor.x+value.x,cy=item.anchor.y+value.y,rotation=value.rotation;
       if(layer.attach){const a=layer.attach,target=byId.get(a.targetId),tp=pose(target),tb=bounds(target,prepared.byId.get(target.id),ctx),sb=bounds(layer,item,ctx),ta=point(tb,a.targetAnchor,a.angle||0,target.kind==='lens'||target.kind==='shape'&&target.shape.type==='ellipse'),sa=point(sb,a.selfAnchor);if(a.followRotation)rotation+=tp.rotation;if(a.orientation==='radial')rotation+=a.angle||0;if(a.orientation==='tangent')rotation+=(a.angle||0)+90;
-        const tr=tp.rotation*Math.PI/180,sr=rotation*Math.PI/180,tx=(ta.x*Math.cos(tr)-ta.y*Math.sin(tr))*tp.value.scale,ty=(ta.x*Math.sin(tr)+ta.y*Math.cos(tr))*tp.value.scale,sx=(sa.x*Math.cos(sr)-sa.y*Math.sin(sr))*value.scale,sy=(sa.x*Math.sin(sr)+sa.y*Math.cos(sr))*value.scale;
+        const tr=tp.rotation*Math.PI/180,sr=rotation*Math.PI/180,ax=ta.x*tp.value.scale*(tp.value.scaleX??1),ay=ta.y*tp.value.scale*(tp.value.scaleY??1),bx=sa.x*value.scale*(value.scaleX??1),by=sa.y*value.scale*(value.scaleY??1),tx=ax*Math.cos(tr)-ay*Math.sin(tr),ty=ax*Math.sin(tr)+ay*Math.cos(tr),sx=bx*Math.cos(sr)-by*Math.sin(sr),sy=bx*Math.sin(sr)+by*Math.cos(sr);
         cx=tp.cx+tx+(a.offsetX||0)-sx+value.x;cy=tp.cy+ty+(a.offsetY||0)-sy+value.y;
       }
       const result={cx,cy,rotation,value};poses.set(layer.id,result);return result;
@@ -148,7 +164,7 @@
     function renderLayer(layer){
       if(!layer.visible)return;const item=prepared.byId.get(layer.id);if(!item)throw new Error('Composition resources changed; prepare them again.');const p=pose(layer),value=p.value,style=layer.style||{},contentBox=intrinsicBounds(layer,item,ctx),framing=frameLayout(layer,contentBox),box=framing?.box||contentBox;
       ctx.save();ctx.globalAlpha*=value.opacity*(item.paint?.opacity??1);if(style.blend)ctx.globalCompositeOperation=style.blend;if(style.shadow){ctx.shadowColor=style.shadow.color;ctx.shadowBlur=style.shadow.blur;ctx.shadowOffsetX=style.shadow.x;ctx.shadowOffsetY=style.shadow.y;}
-      ctx.translate(p.cx,p.cy);ctx.rotate(p.rotation*Math.PI/180);ctx.scale(value.scale,value.scale);
+      ctx.translate(p.cx,p.cy);ctx.rotate(p.rotation*Math.PI/180);ctx.scale(value.scale*(value.scaleX??1),value.scale*(value.scaleY??1));
       let diagnostic=null;if(options.diagnostics){const matrix=ctx.getTransform(),points=[[box.x,box.y],[box.x+box.width,box.y],[box.x,box.y+box.height],[box.x+box.width,box.y+box.height]].map(([x,y])=>matrix.transformPoint({x,y})),left=Math.min(...points.map(v=>v.x)),top=Math.min(...points.map(v=>v.y)),right=Math.max(...points.map(v=>v.x)),bottom=Math.max(...points.map(v=>v.y));diagnostic={id:layer.id,kind:layer.kind,opacity:ctx.globalAlpha,matrix:{a:matrix.a,b:matrix.b,c:matrix.c,d:matrix.d,e:matrix.e,f:matrix.f},bounds:{x:left,y:top,width:right-left,height:bottom-top},...(contentBox.textLayout?{textOverflow:contentBox.textLayout.overflow}:{}),...(framing?{layoutOverflow:framing.overflow}:{})};options.diagnostics.push(diagnostic);}
       if(framing){ctx.save();if(framing.clip){ctx.beginPath();ctx.rect(framing.inner.x,framing.inner.y,framing.inner.width,framing.inner.height);ctx.clip();}ctx.translate(framing.x,framing.y);ctx.scale(framing.scale,framing.scale);if(diagnostic&&layer.kind==='group'){const matrix=ctx.getTransform();diagnostic.matrix={a:matrix.a,b:matrix.b,c:matrix.c,d:matrix.d,e:matrix.e,f:matrix.f};}}
       if(layer.kind==='group'){

@@ -22,7 +22,7 @@ select:focus-visible, textarea:focus-visible {
 }
 .topbar { background: var(--paper); border-bottom-color: #d5cec2; }
 .logo { color: var(--ink); }
-.logo-mark { background: var(--ink); border-radius: 5px; }
+.logo-mark { background: transparent; }
 .top-divider { background: #d5cec2; }
 .top-title { color: #5e5a54; }
 .dot { color: var(--purple); }

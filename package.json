@@ -1,6 +1,6 @@
 {
   "name": "roomsuite",
-  "version": "3.5.2",
+  "version": "3.5.3",
   "private": true,
   "description": "A self-hosted creative and productivity suite with MCP tools and an agent skill",
   "scripts": {

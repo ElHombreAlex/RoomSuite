@@ -1,3 +1,11 @@
+## RoomSuite 3.5.3
+
+- **MotionRoom GIF export:** export a looping, opaque GIF directly from the editor or MCP. GIFs use up to 256 colors per frame and centisecond timing; size limits apply. WebM and MP4 remain available for video, and transparent output uses WebM.
+- **More control over animation and type:** animate independent X/Y scale for effects such as a door swinging around a group pivot, and set variable-font axes on bundled or embedded fonts. These features use MotionRoom project format version 4; older MotionRoom versions cannot open those projects.
+- **Smoother agent workflows:** create compositions from file-backed asset lists, explicitly rebuild a project at its current revision, filter intentional off-stage lint warnings, and get clearer tool discovery and validation errors. The bundled skill documents anchors, groups, asset formats and the updated workflows.
+- **A lighter RoomSuite mark:** the launcher and shared room headers now show the ink door directly on the light header.
+- **Updating:** install the updated MCP dependencies and restart the backend and agent connection. Refresh any separately installed copy of the RoomSuite skill. Existing projects remain readable.
+
 ## RoomSuite 3.5.2
 
 - **A shared visual identity:** the launcher and room interfaces now use a coordinated ink, warm-paper and flame palette, refined controls and typography inspired by the RoomSuite icons. PixelRoom and Cliproom keep the refreshed styling when run independently.

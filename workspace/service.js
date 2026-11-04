@@ -66,7 +66,9 @@ function createWorkspace({ dataDir, checkWrite, json, sendFile }) {
     return real;
   }
   async function target(value) {
-    const clean = relative(value), parts = clean.split('/'), name = parts.pop(), parent = await existing(parts.join('/'), true);
+    const clean = relative(value), parts = clean.split('/'), name = parts.pop();let parent;
+    try { parent = await existing(parts.join('/'), true); }
+    catch (error) { if (error.code === 'ENOENT' || error.code === 'ENOTDIR') throw fail(404, 'The destination folder does not exist: ' + parts.join('/') + '. Create the Shared folder first.'); throw error; }
     if (!(await fsp.stat(parent)).isDirectory()) throw fail(400, 'The destination folder does not exist.');
     return { file:path.join(parent,name), clean };
   }

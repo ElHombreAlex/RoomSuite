@@ -49,3 +49,14 @@ test('v2 projects migrate while cyclic relationships and unsafe linked paths are
 test('normalized behaviors add reusable motion without modifying base keyframes',()=>{
   const layer={kind:'shape',keyframes:[],effects:[{behaviorId:'sweep',start:1,duration:2,amountX:200,amountY:100}]},behavior={id:'sweep',keyframes:[{at:0,...Motion.defaults,easing:'linear'},{at:1,...Motion.defaults,x:1,y:1,easing:'linear'}]},project={behaviors:[behavior]};assert.equal(Motion.sample(layer,2).x,0);const value=Motion.sampleAnimated(layer,2,project);assert.equal(value.x,100);assert.equal(value.y,50);
 });
+test('variable font axes are validated and use a distinct project version',()=>{
+  const project=Motion.empty(),text={id:'title',kind:'text',name:'Title',visible:true,text:{content:'Title',x:0,y:0,fontSize:60,font:'Bricolage Grotesque',weight:'normal',style:'normal',align:'left',lineHeight:1.2,color:'#112233'},keyframes:[]};project.layers=[text];assert.equal(Motion.validate(project).version,3);
+  text.text.fontVariations={opsz:24,wght:500};const saved=Motion.validate(project);assert.equal(saved.version,4);assert.deepEqual(saved.layers[0].text.fontVariations,{opsz:24,wght:500});
+  const bad=structuredClone(project);bad.layers[0].text.fontVariations={'opszz':24};assert.throws(()=>Motion.validate(bad),/font variations/i);bad.layers[0].text.fontVariations={opsz:24};bad.layers[0].text.font='sans-serif';assert.throws(()=>Motion.validate(bad),/bundled or embedded/i);
+  project.layers=Array.from({length:33},(_,i)=>({...structuredClone(text),id:'title'+i,text:{...text.text,fontVariations:{opsz:i}}}));assert.throws(()=>Motion.validate(project),/32 different variable-font/i);
+});
+test('non-uniform scale interpolates and requires the newer project format',()=>{
+  const project=Motion.empty({duration:1}),layer={id:'door',kind:'shape',name:'Door',visible:true,shape:{type:'rect',x:0,y:0,width:100,height:20,fill:'#ff0000',stroke:'#000000',strokeWidth:0,radius:0},keyframes:[]};project.layers=[layer];
+  Motion.setFrame(layer,0,{...Motion.defaults,scaleX:1,scaleY:1});Motion.setFrame(layer,1,{...Motion.defaults,scaleX:.2,scaleY:1});const result=Motion.validate(project);assert.equal(result.version,4);assert.ok(Math.abs(Motion.sample(result.layers[0],.5).scaleX-.6)<1e-9);assert.equal(Motion.sample(result.layers[0],.5).scaleY,1);
+  result.layers[0].keyframes[1].scaleX=0;assert.throws(()=>Motion.validate(result),/scaleX.*0\.01.*10/i);
+});

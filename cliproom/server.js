@@ -154,6 +154,11 @@ async function route(req, res) {
     try { await fsp.access(bundle); } catch { throw error(503, 'Offline rendering requires the optional MCP dependencies. Run npm ci --prefix mcp.'); }
     return sendFile(req, res, bundle, 'text/javascript; charset=utf-8');
   }
+  if ((req.method === 'GET' || req.method === 'HEAD') && pathname === '/api/render/gifenc.mjs') {
+    const bundle = path.join(SUITE_ROOT,'mcp','node_modules','gifenc','dist','gifenc.esm.js');
+    try { await fsp.access(bundle); } catch { throw error(503,'GIF export requires the optional MCP dependencies. Run npm ci --prefix mcp.'); }
+    return sendFile(req,res,bundle,'text/javascript; charset=utf-8');
+  }
   if ((req.method === 'GET' || req.method === 'HEAD') && pathname === '/api/render/aac-encoder.mjs') {
     const bundle = path.join(SUITE_ROOT,'mcp','node_modules','@mediabunny','aac-encoder','dist','bundles','mediabunny-aac-encoder.mjs');
     let source;try{source=await fsp.readFile(bundle,'utf8');}catch{throw error(503,'MP4 audio conversion requires the optional MCP dependencies. Run npm ci --prefix mcp.');}
