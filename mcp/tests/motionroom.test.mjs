@@ -83,7 +83,11 @@ test('playback reaches the final keyframe and a recording can be cancelled',asyn
     await editor.locator('#seek').evaluate(node=>{node.value='.25';node.dispatchEvent(new Event('input',{bubbles:true}));});await editor.locator('#x').fill('40');await editor.locator('#x').dispatchEvent('change');
     assert.equal(await editor.evaluate(()=>project.layers[0].keyframes.at(-1).x),40,'editing the final keyframe must preserve the value');
     await editor.locator('#seek').evaluate(node=>{node.value='0';node.dispatchEvent(new Event('input',{bubbles:true}));});await editor.locator('#play').click();await editor.waitForFunction(()=>!playing&&time===project.duration);
-    assert.equal(await editor.locator('#x').inputValue(),'40');await editor.locator('#duration').fill('2');await editor.locator('#duration').dispatchEvent('change');await editor.locator('#exportVideo').click();await editor.locator('#cancelExport').click();await editor.waitForFunction(()=>document.querySelector('#status').textContent.includes('cancelled'));assert.equal(await editor.locator('#exportVideo').isEnabled(),true);
+    assert.equal(await editor.locator('#x').inputValue(),'40');
+    // Leave enough frames for a real click to reach Cancel after encoding starts.
+    await editor.locator('#duration').fill('60');await editor.locator('#duration').dispatchEvent('change');await editor.locator('#fps').fill('60');await editor.locator('#fps').dispatchEvent('change');
+    await editor.locator('#exportVideo').click();await editor.waitForFunction(()=>document.querySelector('#timeLabel').textContent.startsWith('Rendering frame '));await editor.locator('#cancelExport').click();
+    await editor.waitForFunction(()=>document.querySelector('#status').textContent.includes('cancelled'));assert.equal(await editor.locator('#exportVideo').isEnabled(),true);
   }finally{await editor.close();}
 });
 test('WebM handoff uploads playable video to Cliproom', {timeout:60000},async()=>{
