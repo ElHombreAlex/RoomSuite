@@ -894,7 +894,21 @@ async function exportEveryFrame(){
   }catch(error){if(generation!==exportGeneration||controller.signal.aborted)return;exportFailure=error.message||'Could not render the video.';$('exportStatus').textContent=exportFailure;notify(exportFailure,7000);}
   finally{if(offlineExportAbort===controller)offlineExportAbort=null;if(generation===exportGeneration){exportPreparing=false;$('exportCancelBtn').textContent='Cancel';updateExportFormat();render();}}
 }
-async function exportVideo(preferred = $('exportFormatChoice').value) {
+async function recoverEmptyRealtimeWebm(generation,shared){
+  const controller=new AbortController();offlineExportAbort=controller;exportPreparing=true;updateExportFormat();
+  $('exportCancelBtn').textContent='Cancel export';$('exportProgressWrap').classList.remove('hidden');$('exportStatus').textContent='The browser produced no video. Rendering every frame on the server…';
+  try{
+    const response=await fetch('/api/render',{method:'POST',headers:{'Content-Type':'application/json','X-Cliproom-Request':'1'},body:JSON.stringify({project:clone(state),render_mode:'offline',include_audio:$('exportAudio').value!=='mute'}),signal:controller.signal});
+    if(!response.ok){const body=await response.json().catch(()=>({}));throw new Error(body.error||`Render failed (${response.status}).`);}
+    const blob=await response.blob();if(controller.signal.aborted||generation!==exportGeneration)return;if(!blob.size)throw new Error('The server did not produce a video.');
+    const name=(state.name.trim().replace(/[\\/:*?"<>|]+/g,'-')||'cliproom-video')+'.webm';exportWarning='Real-time recording was empty, so the server rendered every frame instead.';
+    $('exportDialog').close();
+    if(shared&&window.RoomShared){const saved=await RoomShared.save(blob,name);if(saved)notify('Saved to shared files: '+saved+' · '+exportWarning,12000);}
+    else{const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);notify('Video ready. '+exportWarning,12000);}
+  }catch(error){if(controller.signal.aborted||generation!==exportGeneration)return;throw new Error('The browser did not produce a video, and Every frame export failed: '+(error.message||'unknown error'));}
+  finally{if(offlineExportAbort===controller)offlineExportAbort=null;}
+}
+async function exportVideo(preferred = $('exportFormatChoice').value, allowServerFallback = true) {
   if($('exportMode').value==='offline')return exportEveryFrame();
   const format = formatSupport(preferred); if (!format || recording || exportPreparing) return;
   const shared = exportToShared; exportToShared = false;
@@ -930,7 +944,8 @@ async function exportVideo(preferred = $('exportFormatChoice').value) {
         $('exportDialog').close();
         if (shared && window.RoomShared) { try { const path=await RoomShared.save(blob,name); if(path)notify('Saved to shared files: '+path+(exportWarning?' · '+exportWarning:''),exportWarning?12000:4000); } catch(error) { notify(error.message,7000); } }
         else { const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);notify(exportWarning?'Video ready. '+exportWarning:'Your video is ready.',exportWarning?12000:4000); }
-      } else if (!cancelRecording) {exportFailure='The browser did not produce a video. Try Every frame export for supported projects, or choose another format.';$('exportStatus').textContent=exportFailure;notify(exportFailure, 7000);}
+      } else if (!cancelRecording && format.extension==='webm' && allowServerFallback) {await recoverEmptyRealtimeWebm(generation,shared);}
+      else if (!cancelRecording) {exportFailure='The browser did not produce a video. Try Every frame export for supported projects, or choose another format.';$('exportStatus').textContent=exportFailure;notify(exportFailure, 7000);}
       } catch(error) {exportFailure=error.message||'MP4 audio conversion failed.';$('exportStatus').textContent=exportFailure;notify(exportFailure,7000);}
       finally {if(generation===exportGeneration){exportPreparing=false;updateExportFormat();$('exportCancelBtn').textContent='Cancel';render();}}
     };

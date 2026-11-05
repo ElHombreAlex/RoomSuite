@@ -103,7 +103,7 @@ async function offlineUnavailable(project, assetsDirectory) {
   }
   return null;
 }
-async function renderProject(project, { port, suiteMode, signal, mode = 'realtime', format = 'auto', includeAudio = true }) {
+async function renderProject(project, { port, suiteMode, signal, assetsDirectory, mode = 'realtime', format = 'auto', includeAudio = true }) {
   const { chromium } = loadPlaywright();
   const options = { headless:true, args:['--autoplay-policy=no-user-gesture-required'] };
   if (process.env.ROOMSUITE_BROWSER_PATH) options.executablePath = process.env.ROOMSUITE_BROWSER_PATH;
@@ -135,34 +135,43 @@ async function renderProject(project, { port, suiteMode, signal, mode = 'realtim
     if (!response?.ok()) throw new Error('Could not open the Cliproom renderer.');
     const downloadPromise = page.waitForEvent('download', { timeout });
     downloadPromise.catch(() => {});
-    let extension;
+    let extension,usedFallback=false;
+    const renderEveryFrame = () => page.evaluate(async state => {
+      setState(state, uid(), 0);
+      const { renderOffline } = await import('/offline-render.js');
+      await renderOffline({ project:state, timeline:T, canvas,
+        prepareImages:async () => {await prepareGradeMasks(state);await Promise.all(state.clips.filter(clip => asset(clip.assetId)?.kind === 'image').map(async clip => { const image = imageFor(asset(clip.assetId)); await image.decode(); }));},
+        renderAt:(time, frames) => { currentTime = time; renderFrame(frames); } });
+    }, project);
     if (mode === 'offline') {
       extension = 'webm';
-      await page.evaluate(async state => {
-        setState(state, uid(), 0);
-        const { renderOffline } = await import('/offline-render.js');
-        await renderOffline({ project:state, timeline:T, canvas,
-          prepareImages:async () => {await prepareGradeMasks(state);await Promise.all(state.clips.filter(clip => asset(clip.assetId)?.kind === 'image').map(async clip => { const image = imageFor(asset(clip.assetId)); await image.decode(); }));},
-          renderAt:(time, frames) => { currentTime = time; renderFrame(frames); } });
-      }, project);
+      await renderEveryFrame();
     } else {
       const selected = await page.evaluate(({state,preferred,includeAudio}) => {setState(state,uid(),0);$('exportAudio').value=includeAudio?'auto':'mute';return formatSupport(preferred);}, {state:project,preferred:format,includeAudio});
       if (!selected) throw Object.assign(new Error(format === 'mp4' ? 'MP4/H.264 with AAC is unavailable in the rendering browser. Configure a browser with those encoders or request WebM.' : 'The requested video format is unavailable in the rendering browser.'), {status:422});
       extension = selected.extension;
       const started = await page.evaluate(async ({preferred}) => {
-        await exportVideo(preferred);
+        await exportVideo(preferred,false);
         return { active:recording || exportPreparing, message:document.querySelector('#toast').textContent || document.querySelector('#exportStatus').textContent };
       }, {state:project,preferred:format});
       if (!started.active) throw new Error(started.message || 'Could not start the Cliproom render.');
     }
-    const download = mode === 'realtime' ? await Promise.race([downloadPromise,page.waitForFunction(()=>exportFailure,null,{timeout}).then(async value=>{throw new Error(await value.jsonValue());})]) : await downloadPromise;
+    let download;
+    try{download=mode==='realtime'?await Promise.race([downloadPromise,page.waitForFunction(()=>exportFailure,null,{timeout}).then(async value=>{throw new Error(await value.jsonValue());})]):await downloadPromise;}
+    catch(error){
+      if(mode!=='realtime'||extension!=='webm'||!error.message.includes('The browser did not produce a video.'))throw error;
+      const unsupported=await offlineUnavailable(project,assetsDirectory);
+      if(unsupported)throw new Error('The browser did not produce a video, and Every frame export is unavailable: '+unsupported);
+      try{await renderEveryFrame();download=await downloadPromise;usedFallback=true;}
+      catch(fallbackError){if(signal?.aborted||timedOut)throw fallbackError;throw new Error('The browser did not produce a video, and Every frame export failed: '+fallbackError.message);}
+    }
     const failure = await download.failure(); if (failure) throw new Error('Render download failed: ' + failure);
-    const warning = mode === 'realtime' ? await page.evaluate(() => exportWarning) : '';
+    const warning = usedFallback ? 'Real-time recording was empty, so the server rendered every frame instead.' : mode === 'realtime' ? await page.evaluate(() => exportWarning) : '';
     dir = await fs.mkdtemp(path.join(temporaryRoot, 'roomsuite-render-'));
     const file = path.join(dir, 'cliproom.' + extension);
     await download.saveAs(file);
     const stat = await fs.stat(file); if (!stat.size) throw new Error('The renderer produced an empty video.');
-    return { file, bytes:stat.size, extension, mime:extension === 'mp4' ? 'video/mp4' : 'video/webm', warning, cleanup };
+    return { file, bytes:stat.size, extension, mime:extension === 'mp4' ? 'video/mp4' : 'video/webm', warning, warningCode:usedFallback?'offline-fallback':warning?'slow-frames':'', renderMode:usedFallback?'offline':mode, cleanup };
   } catch (error) {
     await cleanup();
     if (signal?.aborted) throw Object.assign(new Error('Render cancelled.'), { status:499 });

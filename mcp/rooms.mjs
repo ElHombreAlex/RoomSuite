@@ -532,7 +532,8 @@ async function renderProjectRequest(body, requestedOutput, signal) {
     });
     if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'Render failed (' + response.status + ').'); }
     const actualMode = response.headers.get('x-cliproom-render-mode') || 'realtime';
-    const frameWarning = response.headers.get('x-cliproom-render-warning') === 'slow-frames' ? 'Real-time rendering was too slow and the video may be missing frames. Try offline rendering for supported projects.' : '';
+    const warningCode=response.headers.get('x-cliproom-render-warning');
+    const frameWarning=warningCode==='slow-frames'?'Real-time rendering was too slow and the video may be missing frames. Try offline rendering for supported projects.':warningCode==='offline-fallback'?'Real-time recording was empty, so the server rendered every frame instead.':'';
     if (body.render_mode === 'offline' && actualMode !== 'offline') { await response.body?.cancel(); throw new Error('The RoomSuite server does not support offline rendering. Update and restart the server.'); }
     if (body.include_audio === false && response.headers.get('x-cliproom-audio-included') !== 'false') { await response.body?.cancel(); throw new Error('The RoomSuite server did not confirm a silent export. Update and restart the server.'); }
     const type = (response.headers.get('content-type') || '').split(';')[0];

@@ -10,13 +10,13 @@ import {Client} from '@modelcontextprotocol/client';
 import {StdioClientTransport} from '@modelcontextprotocol/client/stdio';
 
 const root=fileURLToPath(new URL('../../',import.meta.url));
-test('MCP reports the server warning for a slow real-time render',async()=>{
+test('MCP reports slow-render and frame-accurate fallback warnings',async()=>{
   const temp=await fs.mkdtemp(path.join(os.tmpdir(),'roomsuite-render-warning-'));
-  let warned=true,received;
+  let warning='slow-frames',received;
   const server=http.createServer(async(req,res)=>{
     if(req.method!=='POST'||req.url!=='/api/render'){res.writeHead(404).end();return;}
     const chunks=[];for await(const chunk of req)chunks.push(chunk);received=JSON.parse(Buffer.concat(chunks));
-    res.writeHead(200,{'Content-Type':'video/webm','X-Cliproom-Render-Mode':'realtime',...(warned?{'X-Cliproom-Render-Warning':'slow-frames'}:{})});res.end(Buffer.alloc(128,7));
+    res.writeHead(200,{'Content-Type':'video/webm','X-Cliproom-Render-Mode':warning==='offline-fallback'?'offline':'realtime',...(warning?{'X-Cliproom-Render-Warning':warning}:{})});res.end(Buffer.alloc(128,7));
   });
   const client=new Client({name:'render-warning-test',version:'1'});
   try {
@@ -26,7 +26,10 @@ test('MCP reports the server warning for a slow real-time render',async()=>{
     const result=await client.callTool({name:'cliproom_render_project',arguments:{project_id,output:'warning.webm',render_mode:'realtime'}});
     assert.equal(result.isError,undefined,JSON.stringify(result.content));assert.equal(received.project_id,project_id);
     assert.match(result.structuredContent.warnings[0],/may be missing frames/i);
-    warned=false;
+    warning='offline-fallback';
+    const fallback=await client.callTool({name:'cliproom_render_project',arguments:{project_id,output:'fallback.webm',render_mode:'realtime'}});
+    assert.equal(fallback.isError,undefined,JSON.stringify(fallback.content));assert.equal(fallback.structuredContent.render_mode,'offline');assert.match(fallback.structuredContent.warnings[0],/rendered every frame instead/i);
+    warning='';
     const clean=await client.callTool({name:'cliproom_render_project',arguments:{project_id,output:'clean.webm',render_mode:'realtime'}});
     assert.equal(clean.isError,undefined,JSON.stringify(clean.content));assert.equal(clean.structuredContent.warnings,undefined);
   } finally {

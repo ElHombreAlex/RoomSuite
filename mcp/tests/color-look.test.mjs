@@ -72,7 +72,7 @@ test('grading sections stay open when a range changes before toggle events run',
     assert.deepEqual(afterInspectorRebuild,{creative:true,wheels:true,amount:30},'a Cliproom inspector rebuild must preserve live section state');
   } finally {await editor.close();}
 });
-test('a slow real-time export warns that frames may be missing',{timeout:90000},async()=>{
+test('a slow real-time export warns that frames may be missing',{timeout:180000},async()=>{
   const png=await fs.readFile(path.join(work,'source.png'));
   const response=await fetch(base+'/api/assets',{method:'POST',headers:{Origin:base,'X-Cliproom-Request':'1','X-File-Type':'image/png','X-File-Name':'slow.png'},body:png});assert.equal(response.status,201);const asset=await response.json();
   const editor=await browser.newPage({acceptDownloads:true,viewport:{width:1440,height:1000}});
@@ -88,28 +88,85 @@ test('a slow real-time export warns that frames may be missing',{timeout:90000},
     },asset);
     await editor.locator('#exportBtn').click();assert.match(await editor.locator('#exportModeHint').textContent(),/may drop frames/i);
     await editor.locator('#exportFormatChoice').selectOption('webm');
-    const pending=editor.waitForEvent('download',{timeout:60000});await editor.locator('#startExportBtn').click();
+    const pending=editor.waitForEvent('download',{timeout:120000});await editor.locator('#startExportBtn').click();
     let download;try{download=await pending;}catch(error){const detail=await editor.evaluate(()=>({status:document.querySelector('#exportStatus').textContent,failure:exportFailure,recording,preparing:exportPreparing}));throw new Error('Video download did not complete: '+JSON.stringify(detail),{cause:error});}
-    assert.ok((await fs.stat(await download.path())).size>100);
-    assert.match(await editor.locator('#toast').textContent(),/may be missing frames/i);
+    const output=await fs.readFile(await download.path());assert.ok(output.length>100);assert.equal(output.readUInt32BE(0),0x1a45dfa3);
+    assert.match(await editor.locator('#toast').textContent(),/may be missing frames|rendered every frame instead/i);
     const requests=await editor.evaluate(()=>({supported:window.canCountFrameRequests,count:window.frameRequests}));if(requests.supported)assert.ok(requests.count>0,'completed draws should request capture frames when supported');
   } finally {await editor.close();}
 });
-test('an empty browser recording reports a recoverable export error',{timeout:60000},async()=>{
+test('an empty browser recording recovers with a frame-accurate WebM',{timeout:60000},async()=>{
   const png=await fs.readFile(path.join(work,'source.png'));
   const response=await fetch(base+'/api/assets',{method:'POST',headers:{Origin:base,'X-Cliproom-Request':'1','X-File-Type':'image/png','X-File-Name':'empty.png'},body:png});assert.equal(response.status,201);const asset=await response.json();
-  const editor=await browser.newPage({viewport:{width:1440,height:1000}});
+  const rate=48000,frames=rate,wav=Buffer.alloc(44+frames*2);wav.write('RIFF',0);wav.writeUInt32LE(wav.length-8,4);wav.write('WAVEfmt ',8);wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);wav.writeUInt32LE(rate,24);wav.writeUInt32LE(rate*2,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);wav.write('data',36);wav.writeUInt32LE(frames*2,40);for(let i=0;i<frames;i++)wav.writeInt16LE(Math.round(Math.sin(i*440*Math.PI*2/rate)*10000),44+i*2);
+  const audioResponse=await fetch(base+'/api/assets',{method:'POST',headers:{Origin:base,'X-Cliproom-Request':'1','X-File-Type':'audio/wav','X-File-Name':'fallback-tone.wav'},body:wav});assert.equal(audioResponse.status,201);const audio=await audioResponse.json();
+  const editor=await browser.newPage({viewport:{width:1440,height:1000}}),fallbackRequests=[];
   try {
     await editor.addInitScript(()=>{window.MediaRecorder=class EmptyRecorder{static isTypeSupported(){return true;}constructor(stream,options){this.state='inactive';window.testRecorderMime=options.mimeType;}start(){this.state='recording';}stop(){this.state='inactive';setTimeout(()=>this.onstop?.(),0);}};});
+    await editor.route('**/api/render',route=>{fallbackRequests.push(route.request().postDataJSON());return route.continue();});
+    await editor.goto(base+'/cliproom/');await editor.evaluate(async({image,audio})=>{
+      const project=T.empty(()=>crypto.randomUUID());project.assets=[{...image,kind:'image',width:64,height:64},{...audio,kind:'audio',duration:1}];
+      project.clips=[{id:crypto.randomUUID(),assetId:image.id,trackId:project.videoTracks[0].id,start:0,in:0,out:.6,rate:1,volume:1,fit:'contain',opacity:1,scale:1,x:50,y:50,brightness:100,contrast:100,saturation:100,rotation:0,flipX:false,fadeIn:0,fadeOut:0}];
+      project.audioClips=[{id:crypto.randomUUID(),assetId:audio.id,trackId:project.audioTracks[0].id,start:0,in:0,out:.6,rate:1,volume:1,fadeIn:0,fadeOut:0}];
+      setState(project,crypto.randomUUID(),0);await imageFor(asset(image.id)).decode();
+    },{image:asset,audio});
+    await editor.locator('#exportBtn').click();await editor.locator('#exportFormatChoice').selectOption('webm');const pending=editor.waitForEvent('download',{timeout:30000});await editor.locator('#startExportBtn').click();
+    const path=await (await pending).path(),output=await fs.readFile(path);assert.ok(output.length>100);assert.equal(output.readUInt32BE(0),0x1a45dfa3);
+    await editor.evaluate(()=>{const input=document.createElement('input');input.type='file';input.id='recovered-video';document.body.append(input);});await editor.locator('#recovered-video').setInputFiles(path);
+    const media=await editor.evaluate(async()=>{const file=document.querySelector('#recovered-video').files[0],audio=new AudioContext(),buffer=await audio.decodeAudioData(await file.arrayBuffer()),samples=buffer.getChannelData(0);await audio.close();let power=0;for(let i=0;i<samples.length;i++)power+=samples[i]*samples[i];const video=document.createElement('video'),url=URL.createObjectURL(file);video.muted=true;video.src=url;await new Promise((resolve,reject)=>{video.onloadedmetadata=resolve;video.onerror=reject;});await new Promise((resolve,reject)=>{video.onseeked=resolve;video.onerror=reject;video.currentTime=.2;});const canvas=document.createElement('canvas');canvas.width=video.videoWidth;canvas.height=video.videoHeight;const ctx=canvas.getContext('2d');ctx.drawImage(video,0,0);const pixel=[...ctx.getImageData(Math.floor(canvas.width/2),Math.floor(canvas.height/2),1,1).data];URL.revokeObjectURL(url);return {pixel,rms:Math.sqrt(power/samples.length)};});assert.ok(media.pixel[0]>100&&media.pixel[0]>media.pixel[1],JSON.stringify(media));assert.ok(media.rms>.02,JSON.stringify(media));
+    assert.match(await editor.locator('#toast').textContent(),/rendered every frame instead/i);assert.match(await editor.evaluate(()=>exportWarning),/rendered every frame instead/i);assert.equal(await editor.evaluate(()=>window.testRecorderMime),'video/webm;codecs=vp8,opus');assert.equal(fallbackRequests[0].include_audio,true);
+    await editor.locator('#exportBtn').click();await editor.locator('#exportFormatChoice').selectOption('webm');await editor.locator('#exportAudio').selectOption('mute');const silent=editor.waitForEvent('download',{timeout:30000});await editor.locator('#startExportBtn').click();const silentOutput=await fs.readFile(await (await silent).path());assert.equal(silentOutput.readUInt32BE(0),0x1a45dfa3);assert.equal(fallbackRequests[1].include_audio,false);
+  } finally {await editor.close();}
+});
+test('an unavailable frame-accurate fallback reports a recoverable export error',{timeout:60000},async()=>{
+  const png=await fs.readFile(path.join(work,'source.png'));
+  const response=await fetch(base+'/api/assets',{method:'POST',headers:{Origin:base,'X-Cliproom-Request':'1','X-File-Type':'image/png','X-File-Name':'fallback-error.png'},body:png});assert.equal(response.status,201);const asset=await response.json();
+  const editor=await browser.newPage({viewport:{width:1440,height:1000}});
+  try{
+    await editor.addInitScript(()=>{window.MediaRecorder=class EmptyRecorder{static isTypeSupported(){return true;}constructor(){this.state='inactive';}start(){this.state='recording';}stop(){this.state='inactive';setTimeout(()=>this.onstop?.(),0);}};});
+    await editor.route('**/api/render',route=>route.fulfill({status:422,contentType:'application/json',body:JSON.stringify({error:'This project is not supported by Every frame export.'})}));
     await editor.goto(base+'/cliproom/');await editor.evaluate(async meta=>{
       const project=T.empty(()=>crypto.randomUUID());project.assets=[{...meta,kind:'image',width:64,height:64}];
       project.clips=[{id:crypto.randomUUID(),assetId:meta.id,trackId:project.videoTracks[0].id,start:0,in:0,out:.6,rate:1,volume:1,fit:'contain',opacity:1,scale:1,x:50,y:50,brightness:100,contrast:100,saturation:100,rotation:0,flipX:false,fadeIn:0,fadeOut:0}];
       setState(project,crypto.randomUUID(),0);await imageFor(asset(meta.id)).decode();
     },asset);
     await editor.locator('#exportBtn').click();await editor.locator('#exportFormatChoice').selectOption('webm');await editor.locator('#startExportBtn').click();
-    await editor.waitForFunction(()=>exportFailure.includes('did not produce a video'));
-    assert.match(await editor.locator('#exportStatus').textContent(),/Try Every frame export/i);assert.equal(await editor.locator('#exportDialog').evaluate(dialog=>dialog.open),true);assert.equal(await editor.evaluate(()=>window.testRecorderMime),'video/webm;codecs=vp8,opus');
-  } finally {await editor.close();}
+    await editor.waitForFunction(()=>exportFailure.includes('Every frame export failed'));assert.match(await editor.locator('#exportStatus').textContent(),/not supported by Every frame export/i);assert.equal(await editor.locator('#exportDialog').evaluate(dialog=>dialog.open),true);assert.equal(await editor.locator('#startExportBtn').isEnabled(),true);
+  }finally{await editor.close();}
+});
+test('cancelling the frame-accurate fallback leaves the editor usable',{timeout:60000},async()=>{
+  const png=await fs.readFile(path.join(work,'source.png'));
+  const response=await fetch(base+'/api/assets',{method:'POST',headers:{Origin:base,'X-Cliproom-Request':'1','X-File-Type':'image/png','X-File-Name':'fallback-cancel.png'},body:png});assert.equal(response.status,201);const asset=await response.json();
+  const editor=await browser.newPage({viewport:{width:1440,height:1000}});let pendingRoute,resolveIntercept,downloaded=false;
+  const intercepted=new Promise(resolve=>{resolveIntercept=resolve;});
+  try{
+    await editor.addInitScript(()=>{window.MediaRecorder=class EmptyRecorder{static isTypeSupported(){return true;}constructor(){this.state='inactive';}start(){this.state='recording';}stop(){this.state='inactive';setTimeout(()=>this.onstop?.(),0);}};});
+    await editor.route('**/api/render',route=>{pendingRoute=route;resolveIntercept();});editor.on('download',()=>{downloaded=true;});
+    await editor.goto(base+'/cliproom/');await editor.evaluate(async meta=>{
+      const project=T.empty(()=>crypto.randomUUID());project.assets=[{...meta,kind:'image',width:64,height:64}];
+      project.clips=[{id:crypto.randomUUID(),assetId:meta.id,trackId:project.videoTracks[0].id,start:0,in:0,out:.6,rate:1,volume:1,fit:'contain',opacity:1,scale:1,x:50,y:50,brightness:100,contrast:100,saturation:100,rotation:0,flipX:false,fadeIn:0,fadeOut:0}];
+      setState(project,crypto.randomUUID(),0);await imageFor(asset(meta.id)).decode();
+    },asset);
+    await editor.locator('#exportBtn').click();await editor.locator('#exportFormatChoice').selectOption('webm');await editor.locator('#startExportBtn').click();await intercepted;
+    await editor.locator('#exportCancelBtn').click();await editor.waitForFunction(()=>!recording&&!exportPreparing);await pendingRoute.abort().catch(()=>{});
+    assert.equal(await editor.locator('#exportBtn').isEnabled(),true);assert.equal(downloaded,false);
+  }finally{await editor.close();}
+});
+test('an empty MP4 recording does not silently switch the requested format',{timeout:60000},async()=>{
+  const png=await fs.readFile(path.join(work,'source.png'));
+  const response=await fetch(base+'/api/assets',{method:'POST',headers:{Origin:base,'X-Cliproom-Request':'1','X-File-Type':'image/png','X-File-Name':'empty-mp4.png'},body:png});assert.equal(response.status,201);const asset=await response.json();
+  const editor=await browser.newPage({viewport:{width:1440,height:1000}});let fallbackRequested=false;
+  try{
+    await editor.addInitScript(()=>{window.MediaRecorder=class EmptyRecorder{static isTypeSupported(){return true;}constructor(){this.state='inactive';}start(){this.state='recording';}stop(){this.state='inactive';setTimeout(()=>this.onstop?.(),0);}};});
+    await editor.route('**/api/render',route=>{fallbackRequested=true;return route.abort();});
+    await editor.goto(base+'/cliproom/');await editor.evaluate(async meta=>{
+      const project=T.empty(()=>crypto.randomUUID());project.assets=[{...meta,kind:'image',width:64,height:64}];
+      project.clips=[{id:crypto.randomUUID(),assetId:meta.id,trackId:project.videoTracks[0].id,start:0,in:0,out:.6,rate:1,volume:1,fit:'contain',opacity:1,scale:1,x:50,y:50,brightness:100,contrast:100,saturation:100,rotation:0,flipX:false,fadeIn:0,fadeOut:0}];
+      setState(project,crypto.randomUUID(),0);await imageFor(asset(meta.id)).decode();
+    },asset);
+    await editor.locator('#exportBtn').click();await editor.locator('#exportFormatChoice').selectOption('mp4');await editor.locator('#startExportBtn').click();
+    await editor.waitForFunction(()=>exportFailure.includes('did not produce a video'));assert.match(await editor.locator('#exportStatus').textContent(),/Try Every frame export/i);assert.equal(fallbackRequested,false);assert.equal(await editor.locator('#exportDialog').evaluate(dialog=>dialog.open),true);
+  }finally{await editor.close();}
 });
 test('a person edits creative controls and shares an embedded LUT preset',async()=>{
   const info=await call('roomsuite_lut_inspect',{path:'swap.cube'});assert.equal(info.size,2);assert.equal(info.entries,8);

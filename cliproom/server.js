@@ -195,12 +195,12 @@ async function route(req, res) {
     res.once('close', disconnected);
     let output;
     try {
-      output = await renderQueue.run(()=>renderProject(project, { port:PORT, suiteMode:SUITE_MODE, signal:controller.signal, mode, format, includeAudio:body.include_audio!==false }),{signal:controller.signal});
+      output = await renderQueue.run(()=>renderProject(project, { port:PORT, suiteMode:SUITE_MODE, signal:controller.signal, assetsDirectory:ASSETS, mode, format, includeAudio:body.include_audio!==false }),{signal:controller.signal});
       if (controller.signal.aborted) return;
       res.setHeader('Content-Type', output.mime); res.setHeader('Content-Length', output.bytes);
-      res.setHeader('X-Cliproom-Render-Mode', mode);
+      res.setHeader('X-Cliproom-Render-Mode', output.renderMode||mode);
       res.setHeader('X-Cliproom-Audio-Included', body.include_audio===false?'false':'true');
-      if (output.warning) res.setHeader('X-Cliproom-Render-Warning', 'slow-frames');
+      if (output.warning) res.setHeader('X-Cliproom-Render-Warning', output.warningCode||'slow-frames');
       res.setHeader('Content-Disposition', 'attachment; filename="cliproom.' + output.extension + '"');
       res.writeHead(200); await pipeline(fs.createReadStream(output.file), res);
     } catch (cause) {
