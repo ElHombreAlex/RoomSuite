@@ -2,13 +2,35 @@
 
 ![An animated RoomSuite door opening to celebrate version 3.5.](docs/artwork/roomsuite-door-open.gif)
 
-*Made in RoomSuite to celebrate version 3.5.*
+*Made in RoomSuite to celebrate version 3.5. The original GIF's model API cost was about $0.04.*
 
 [![M8ven Verified](https://m8ven.ai/badge/mcp/elhombrealex-roomsuite-ldiexw?v=3bde4cfd106648272d338ebb0d5a4afb&variant=verified)](https://m8ven.ai/mcp/elhombrealex-roomsuite-ldiexw?s=readme)
 
-RoomSuite is a self-hosted workspace for creative work, productivity, notes and shared files. Use the launcher switch to choose Creative or Productivity. Each room or suite opens in its own tab or window, so you can work in several at once:
+RoomSuite is a self-hosted workspace for creative work, productivity, notes and shared files. Use the launcher switch to choose Creative or Productivity. Each room or suite opens in its own tab or window, so you can work in several at once.
 
 RoomSuite 3.5.3 adds MotionRoom GIF export, independent scaling and variable-font controls, alongside clearer agent workflows. RoomSuite 3.5.2 refreshed the launcher and room interfaces with a shared ink, paper and flame identity. RoomSuite 3.5 includes an installable agent skill that guides AI agents through the suite's MCP tools, creative workflows and productivity rooms. RoomSuite 3 also adds shared photo and video grading, editable audio sessions, safer shared-file recovery and reusable MotionRoom compositions. See [what's new and known limits](RELEASE_NOTES.md).
+
+## Benchmark
+
+**Small API costs. Room to create and refine.** These two RoomSuite 3.5.3 runs used DeepSeek Harness and `deepseek-flash` to turn a brief into finished files—with creative iterations included.
+
+### Full-suite campaign — $0.06 in model API charges
+
+One run produced **16 files across all 12 rooms and Shared files**: five posters, two videos, a strategy brief, a spreadsheet, a slide deck, a calendar, audio and editable project assets. It included poster drafts, three Cliproom video renders and a revised slide deck, with 108 MCP calls attempted. See the [full run details](docs/full-suite-result-2026-11-07.md).
+
+### Motion showcase — CNY ¥1.20 in model API charges
+
+A **30-second RoomSuite product film with an original score** went through nine accepted MotionRoom revisions and 30 preview frames before its final edit. The run used VectorRoom, MotionRoom and Cliproom, plus a music subagent and local post-processing. See the [run details and review](docs/motion-showcase-result-2026-11-07.md).
+
+The charges cover model API usage for these individual runs, including the iterations described; they exclude local hardware, electricity and human time. Costs vary with the provider, model, caching and task. Billing records, raw logs and the complete campaign output set were not available for independent review. In the full-suite run, the second video averaged about 22.3 fps against its 30 fps target.
+
+Try the [full-suite campaign benchmark](docs/full-suite-benchmark.md), the separate [motion showcase benchmark](docs/motion-showcase-benchmark.md), or the original [lighter campaign brief](docs/agent-campaign-benchmark.md).
+
+### Earlier examples
+
+A previous campaign package cost **under $0.15 in model API usage** and included two videos, five posters, planning, launch-strategy briefs and a PowerPoint deck using DeepSeek Harness and [DeepSeek-V4.1-Flash-1017](https://api-docs.deepseek.com/news/news261017/). The animated GIF above cost **about $0.04**; its original workflow used RoomSuite with external rendering tools, and MotionRoom now supports GIF export. The original billing records for these earlier examples were not available for independent review.
+
+## Creative and productivity rooms
 
 - **PixelRoom** — photo editing, layers, text and local subject/text isolation.
 - **Cliproom** — a multitrack video editor with a server-backed media and project library.

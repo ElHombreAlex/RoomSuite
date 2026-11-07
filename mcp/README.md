@@ -2,6 +2,8 @@
 
 The optional MCP server gives a coding agent local, structured tools for producing RoomSuite output. It uses the official MCP SDK over **stdio**. Editor-based jobs open their own headless browser sessions; project and file utilities use the server or local filesystem directly. It does not control or close your open RoomSuite tabs.
 
+See the [agent workflow examples](../README.md#benchmark) for reported project costs and links to the full-suite and motion showcase benchmarks.
+
 ## Install
 
 The MCP integration requires **Node.js 20 or later**, npm, and a Chromium browser. The ordinary RoomSuite server can still run on Node.js 18 or later without these optional dependencies.
